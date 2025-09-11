@@ -1,8 +1,6 @@
 xarray
-netcdf4
 pandas
 sqlalchemy
-psycopg2-binary
 chromadb
 sentence-transformers
 langchain  # For RAG chaining
