@@ -1,3 +1,7 @@
+from search_profiles import search_profiles
+from chromadb import PersistentClient
+from sentence_transformers import SentenceTransformer as STModel
+from rag.vector_store import setup_chroma
 import os
 import xarray as xr
 import pandas as pd
@@ -11,6 +15,8 @@ from urllib.parse import quote_plus  # For safe password handling
 
 RAW_DATA_PATH = os.path.normpath(os.path.join('..', 'data', 'raw', '7902287_prof.nc'))
 PROCESSED_PARQUET_PATH = os.path.normpath(os.path.join('..', 'data', 'processed', 'argo_profiles.parquet'))
+CHROMA_PATH = os.path.normpath(os.path.join("..", "data", "vector_db"))
+CHROMA_COLLECTION_NAME = "argo_profiles_vector"
 
 # Encode password safely (in case of @, #, etc.)
 DB_USER = "postgres"
@@ -123,6 +129,17 @@ if __name__ == "__main__":
     try:
         process_argo_to_parquet(RAW_DATA_PATH, PROCESSED_PARQUET_PATH)
         load_to_postgres(PROCESSED_PARQUET_PATH, DB_URI)
+
+        # Vector DB setup
+        setup_chroma(PROCESSED_PARQUET_PATH, CHROMA_PATH, CHROMA_COLLECTION_NAME)
+
+        # Example search using the imported function
+        query = "profiles with highest salinity"
+        results = search_profiles(query, top_k=3)
+        print("\n🔍 Search Results:")
+        for r in results:
+            print(f"- {r['document']} (distance={r['distance']:.4f})")
+
     except Exception as e:
         print(f"ERROR: Failed with exception: {e}")
         import traceback
