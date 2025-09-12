@@ -1,13 +1,14 @@
 xarray
 pandas
 sqlalchemy
+psycopg2-binary
 chromadb
 sentence-transformers
-langchain  # For RAG chaining
-langchain-community  # Community integrations
-huggingface-hub  # For LLMs like Mistral
-streamlit  # For dashboard PoC
-plotly  # For visualizations
-fastapi  # For API backend
-uvicorn  # To run FastAPI
+langchain
+langchain-community
+huggingface-hub
+streamlit
+plotly
+fastapi
+uvicorn
 pyarrow
