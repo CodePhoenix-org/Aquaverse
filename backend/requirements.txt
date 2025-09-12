@@ -10,3 +10,4 @@ streamlit  # For dashboard PoC
 plotly  # For visualizations
 fastapi  # For API backend
 uvicorn  # To run FastAPI
+pyarrow
