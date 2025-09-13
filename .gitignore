@@ -16,3 +16,7 @@ frontend/.env
 # VSCode / OS files
 .vscode/
 .DS_Store
+
+#Chroma DB (local data)
+db/chroma_db/
+chroma.sqlite3
