@@ -1,68 +1,240 @@
-:root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+/* Ocean-inspired design system with beautiful gradients and modern aesthetics */
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
-
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-@media (prefers-color-scheme: light) {
+@layer base {
   :root {
-    color: #213547;
-    background-color: #ffffff;
+    /* Ocean-inspired color palette */
+    --background: 210 40% 98%;
+    --foreground: 210 40% 8%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 210 40% 8%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 210 40% 8%;
+
+    /* Deep ocean blue as primary */
+    --primary: 210 100% 40%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 210 100% 60%;
+
+    /* Light teal/cyan accents */
+    --secondary: 180 40% 95%;
+    --secondary-foreground: 210 40% 8%;
+
+    --muted: 210 20% 95%;
+    --muted-foreground: 210 20% 50%;
+
+    /* Vibrant teal accent */
+    --accent: 180 100% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 20% 90%;
+    --input: 210 20% 95%;
+    --ring: 210 100% 50%;
+
+    /* Ocean gradients */
+    --gradient-ocean: linear-gradient(135deg, hsl(210 100% 40%), hsl(180 100% 50%));
+    --gradient-ocean-light: linear-gradient(135deg, hsl(210 40% 98%), hsl(180 30% 95%));
+    --gradient-hero: linear-gradient(135deg, hsl(210 100% 45%) 0%, hsl(180 100% 55%) 50%, hsl(200 80% 70%) 100%);
+    --gradient-card: linear-gradient(135deg, hsl(0 0% 100%) 0%, hsl(210 20% 98%) 100%);
+    
+    /* Shadows with ocean colors */
+    --shadow-ocean: 0 4px 20px -4px hsl(210 100% 40% / 0.25);
+    --shadow-glow: 0 0 40px hsl(180 100% 50% / 0.15);
+    --shadow-soft: 0 2px 10px -2px hsl(210 20% 20% / 0.1);
+
+    /* Animations */
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+
+    --sidebar-foreground: 240 5.3% 26.1%;
+
+    --sidebar-primary: 240 5.9% 10%;
+
+    --sidebar-primary-foreground: 0 0% 98%;
+
+    --sidebar-accent: 240 4.8% 95.9%;
+
+    --sidebar-accent-foreground: 240 5.9% 10%;
+
+    --sidebar-border: 220 13% 91%;
+
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
   }
 }
+
+/* @layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+} */
+
+/* @keyframes typing {
+  from { width: 0 }
+  to { width: 100% }
+}
+
+@keyframes blink {
+  50% { border-color: transparent; }
+}
+
+.typing-effect {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  border-right: 4px solid #00C9FF; 
+  width: 0;
+  animation: typing 4s steps(40, end) var(--delay) forwards,
+             blink 0.7s step-end infinite var(--delay);
+}
+
+
+@keyframes move-background {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.bg-animated-ocean {
+  background: linear-gradient(270deg, #00c9ff, #92fe9d, #00c9ff); 
+  background-size: 600% 600%;
+  animation: move-background 20s ease infinite;
+} */
+
+
+
+
+
+
+
+
+
+
+/* @keyframes gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.animate-gradient {
+  background-size: 300% 300%;
+  animation: gradient 8s ease infinite;
+}
+
+/* Typing Effect */
+.typing-effect {
+  display: inline-block;
+  overflow: hidden;
+  border-right: 2px solid rgba(255,255,255,0.75);
+  white-space: nowrap;
+  width: 0;
+  animation: typing 3s steps(30, end) forwards,
+             blink 0.75s step-end infinite;
+  animation-delay: var(--delay);
+}
+@keyframes typing {
+  from { width: 0; }
+  to { width: 100%; }
+}
+@keyframes blink {
+  from, to { border-color: transparent; }
+  50% { border-color: rgba(255,255,255,0.75); }
+}
+
+.float-letters {
+  display: inline-block;
+}
+.float-letters span {
+  display: inline-block;
+  animation: float 3s ease-in-out infinite;
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+
+
+
+/* Base / default glow state */
+.glow-button {
+  background: #2563eb; /* default blue tone (you can adjust) */
+  color: white;
+  box-shadow: 0 0 8px rgba(37, 99, 235, 0.5); /* subtle blue glow */
+  transition: box-shadow 0.3s ease, transform 0.2s ease;
+}
+
+/* Hover state - stronger glow */
+.glow-button:hover {
+  box-shadow:
+    0 0 12px rgba(59, 130, 246, 0.8),
+    0 0 20px rgba(59, 130, 246, 0.6),
+    0 0 30px rgba(0, 150, 255, 0.7);
+  transform: scale(1.05);
+}
+
+/* Optional: focus outline etc. to persist some glow when focused */
+.glow-button:focus {
+  outline: none;
+  box-shadow:
+    0 0 10px rgba(59, 130, 246, 0.8),
+    0 0 25px rgba(59, 130, 246, 0.6);
+}
+
+
+
+
+ 
+
