@@ -12,3 +12,5 @@ plotly
 fastapi
 uvicorn
 pyarrow
+langchain-huggingface
+python-dotenv
