@@ -1,6 +1,7 @@
-from sqlalchemy import Column,Integer,String,DateTime
+from sqlalchemy import Column,Integer,String,Float,DateTime
 from db.database import Base
 from datetime import datetime
+from pydantic import BaseModel
 
 
 class User(Base):
@@ -10,3 +11,18 @@ class User(Base):
     email=Column(String,unique=True,index=True,nullable=False)
     password=Column(String,nullable=False)
     created_at= Column(DateTime,default=datetime.utcnow)
+
+
+class Profile(Base):
+    __tablename__ = "argo_profiles"
+    id = Column(Integer, primary_key=True, index=True)  
+    time = Column(DateTime, index=True)
+    latitude = Column(Float)
+    longitude = Column(Float)
+    temperature = Column(Float)
+    salinity = Column(Float)    
+
+
+
+class ChatRequest(BaseModel):
+    message:str
