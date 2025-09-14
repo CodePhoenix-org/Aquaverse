@@ -15,4 +15,4 @@ pyarrow
 langchain-huggingface
 python-dotenv
 langchain-openai
-
+langchain-experimental
