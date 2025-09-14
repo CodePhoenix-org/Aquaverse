@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from sentence_transformers import SentenceTransformer
 import re
 from dotenv import load_dotenv
-
+from db.database import DB_URI
 # Load environment variables
 load_dotenv()
 
@@ -23,7 +23,6 @@ base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fil
 parquet_path = os.path.normpath(os.path.join(base_dir, 'data', 'processed', 'argo_profiles.parquet'))
 chroma_path = os.path.normpath(os.path.join(base_dir, 'db', 'chroma_db'))
 collection_name = 'argo_summaries'
-db_uri = 'postgresql://postgres:Aashi%401234@localhost:5432/argo_db'
 test_query = "Show salinity profiles near equator in March 2025"
 
 # Step 1: Populating ChromaDB
@@ -91,7 +90,7 @@ print(f"Parsed SQL:\n{sql}")
 
 # Execute SQL with error handling
 try:
-    engine = create_engine(db_uri)
+    engine = create_engine(DB_URI)
     df_result = pd.read_sql(sql, engine)
     print(f"SQL result shape: {df_result.shape}")
     print(f"Result head:\n{df_result.head().to_string()}")
