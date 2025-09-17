@@ -34,13 +34,20 @@ export const ImagesSlider = ({
         return new Promise((resolve, reject) => {
           const img = new Image();
           img.src = image;
-          img.onload = () => resolve(image);
-          img.onerror = reject;
+          img.onload = () => {
+            console.log('Image loaded:', image);
+            resolve(image);
+          };
+          img.onerror = (error) => {
+            console.error('Failed to load image:', image, error);
+            reject(error);
+          };
         });
       });
 
       Promise.all(loadPromises)
         .then((loadedImages) => {
+          console.log('All images loaded:', loadedImages);
           setLoadedImages(loadedImages);
           setLoading(false);
         })
@@ -109,16 +116,25 @@ export const ImagesSlider = ({
   return (
     <div
       className={cn(
-        'overflow-hidden h-full w-full relative flex items-center justify-center',
+        'overflow-hidden h-full w-full relative bg-gradient-to-br from-blue-900 via-cyan-900 to-blue-800',
         className
       )}
       style={{
         perspective: '1000px',
       }}
     >
-      {areImagesLoaded && children}
+      {/* Fallback background if no images loaded */}
+      {!areImagesLoaded && (
+        <div className="h-full w-full bg-gradient-to-br from-blue-900 via-cyan-900 to-blue-800 flex items-center justify-center">
+          <div className="text-white text-center">
+            <div className="w-16 h-16 border-4 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-4"></div>
+            <p className="text-lg">Loading ocean visuals...</p>
+          </div>
+        </div>
+      )}
+      
       {areImagesLoaded && overlay && (
-        <div className={cn('absolute inset-0 bg-black/60 z-40', overlayClassName)} />
+        <div className={cn('absolute inset-0 z-40', overlayClassName)} />
       )}
       {areImagesLoaded && (
         <AnimatePresence>
@@ -130,9 +146,11 @@ export const ImagesSlider = ({
             exit={direction === 'up' ? 'upExit' : 'downExit'}
             variants={slideVariants}
             className="image h-full w-full absolute inset-0 object-cover object-center"
+            alt={`Ocean image ${currentIndex + 1}`}
           />
         </AnimatePresence>
       )}
+      {areImagesLoaded && children}
     </div>
   );
 };
