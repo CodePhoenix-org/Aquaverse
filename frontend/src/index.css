@@ -10,9 +10,9 @@ body {
   padding: 0;
   box-sizing: border-box;
   background: linear-gradient(120deg, #141E30, #243B55);
-
 }
 
 html{
   scroll-behavior: smooth;
 }
+
