@@ -1,15 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { PaperAirplaneIcon } from '@heroicons/react/24/outline';
-import apiService from '../../services/apiService';
+import axios from 'axios';
 
 const ChatInterface = ({ onDataReceived }) => {
   const [messages, setMessages] = useState([
     {
       id: 1,
       type: 'bot',
-      content: 'Welcome to FloatChat! I can help you explore ARGO ocean data. Try asking me something like "Show me salinity profiles near the equator in March 2023"',
-      timestamp: new Date()
-    }
+      content:
+        'Welcome to FloatChat! I can help you explore ARGO ocean data. Try asking me something like "Show me salinity profiles near the equator in March 2023"',
+      timestamp: new Date(),
+    },
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -30,37 +31,41 @@ const ChatInterface = ({ onDataReceived }) => {
       id: Date.now(),
       type: 'user',
       content: inputValue,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
 
     try {
-      const response = await apiService.sendChatMessage(inputValue);
-      
+      // Send POST request to your backend API
+      const response = await axios.post('http://127.0.0.1:8000/chat', {
+        query: inputValue
+      });
+
       const botMessage = {
         id: Date.now() + 1,
         type: 'bot',
-        content: response.message,
-        data: response.data,
-        timestamp: new Date()
+        content: response.data.message || response.data.answer || '⚠️ No response',
+        data: response.data.data || null,
+        timestamp: new Date(),
       };
 
-      setMessages(prev => [...prev, botMessage]);
-      
-      if (response.data) {
-        onDataReceived(response.data);
+      setMessages((prev) => [...prev, botMessage]);
+
+      if (response.data.data) {
+        onDataReceived(response.data.data);
       }
     } catch (error) {
+      console.error('API Error:', error);
       const errorMessage = {
         id: Date.now() + 1,
         type: 'bot',
         content: 'Sorry, I encountered an error processing your request. Please try again.',
-        timestamp: new Date()
+        timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }
@@ -75,9 +80,11 @@ const ChatInterface = ({ onDataReceived }) => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Chat Header (clean, single line) */}
+      {/* Chat Header */}
       <div className="bg-gradient-to-r from-emerald-600 to-fuchsia-600 text-white p-3">
-        <h2 className="text-base font-semibold">Ask me about ocean data, floats, and profiles</h2>
+        <h2 className="text-base font-semibold">
+          Ask me about ocean data, floats, and profiles
+        </h2>
       </div>
 
       {/* Messages Area */}
@@ -85,7 +92,9 @@ const ChatInterface = ({ onDataReceived }) => {
         {messages.map((message) => (
           <div
             key={message.id}
-            className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex ${
+              message.type === 'user' ? 'justify-end' : 'justify-start'
+            }`}
           >
             <div
               className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
@@ -101,19 +110,25 @@ const ChatInterface = ({ onDataReceived }) => {
             </div>
           </div>
         ))}
-        
+
         {isLoading && (
           <div className="flex justify-start">
             <div className="bg-gray-100 px-4 py-2 rounded-lg">
               <div className="flex space-x-1">
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                <div
+                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                  style={{ animationDelay: '0.1s' }}
+                ></div>
+                <div
+                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                  style={{ animationDelay: '0.2s' }}
+                ></div>
               </div>
             </div>
           </div>
         )}
-        
+
         <div ref={messagesEndRef} />
       </div>
 

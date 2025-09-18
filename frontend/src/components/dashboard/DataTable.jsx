@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowDownTrayIcon, FunnelIcon } from '@heroicons/react/24/outline';
-import apiService from '../../services/apiService';
+
 
 const DataTable = ({ data }) => {
   const [tableData, setTableData] = useState([]);
