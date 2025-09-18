@@ -1,13 +1,18 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine
 from db.database import DB_URI, Base
 from auth import routes as authroute
 from auth import profile
-from fastapi.middleware.cors import CORSMiddleware
 from rag.updated_pipeline import rag_query
 from pydantic import BaseModel
+from dotenv import load_dotenv
+import os
 
-app = FastAPI(title="Aquaverse API")
+load_dotenv()
+
+app = FastAPI(title="Aquaverse Project APIs")
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,14 +28,15 @@ Base.metadata.create_all(bind=engine)
 app.include_router(authroute.router, prefix="/auth", tags=["Auth"])
 app.include_router(profile.router, prefix="/profiles", tags=["Profiles"])
 
+# ChromaDB configuration
+CHROMA_PATH = os.getenv('CHROMA_PATH') or os.getenv('chromapath') or os.path.join(os.path.dirname(os.path.dirname(__file__)), "db", "chroma_db")
+COLLECTION_NAME = os.getenv('COLLECTION_NAME') or os.getenv('collectioname') or 'argo_summaries'
+
+os.makedirs(CHROMA_PATH, exist_ok=True)
+
 @app.get("/")
 def home():
     return {"msg": "you are awesome and connected to the database 🦖"}
-
-
-
-CHROMA_PATH = 'C:/Users/Gagan/Desktop/Sea Sheperds/Aquaverse/db/chroma_db'
-COLLECTION_NAME = 'argo_summaries'
 
 class ChatRequest(BaseModel):
     query: str
@@ -38,12 +44,17 @@ class ChatRequest(BaseModel):
 @app.post("/chat")
 async def chat(req: ChatRequest):
     try:
+        if not req.query.strip():
+            raise HTTPException(status_code=400, detail="Query cannot be empty")
+        
         result = rag_query(
-            user_query=req.query,
+            user_query=req.query.strip(),
             chroma_path=CHROMA_PATH,
             collection_name=COLLECTION_NAME,
             db_uri=DB_URI
         )
-        return {"answer": result}
+        
+        return JSONResponse(content={"answer": result or "No relevant information found."})
+    
     except Exception as e:
         return {"error": str(e)}

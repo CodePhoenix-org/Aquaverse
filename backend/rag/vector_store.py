@@ -3,7 +3,7 @@ import chromadb
 from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 import os
-
+# setup chroma fxn Populate chroma db 
 def setup_chroma(parquet_path, chroma_path, collection_name):
     """
     Populate ChromaDB with ARGO profile summaries and embeddings.
