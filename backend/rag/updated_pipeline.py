@@ -1,270 +1,279 @@
-# import os
-# import pandas as pd
-# from langchain.chains import LLMChain  # Temporary
-# from langchain_core.prompts import ChatPromptTemplate
-# from langchain_openai import ChatOpenAI
-# from chromadb import Client
-# from chromadb.config import Settings
-# from sqlalchemy import create_engine
-# from sentence_transformers import SentenceTransformer
-# import re
-# from dotenv import load_dotenv
-
-# # Load environment variables
-# load_dotenv()
-
-# # Verify API key
-# api_key = os.getenv('OPENROUTER_API_KEY')
-# if not api_key:
-#     raise ValueError("OPENROUTER_API_KEY not found in environment. Check .env file or set it manually.")
-
-# # Paths
-# base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# parquet_path = os.path.normpath(os.path.join(base_dir, 'data', 'processed', 'argo_profiles.parquet'))
-# chroma_path = os.path.normpath(os.path.join(base_dir, 'db', 'chroma_db'))
-# collection_name = 'argo_summaries'
-# db_uri = 'postgresql://postgres:Aashi%401234@localhost:5432/argo_db'
-
-# # Step 1: Populating ChromaDB (run once at start)
-# print("=== STEP 1: Populating ChromaDB ===")
-# df = pd.read_parquet(parquet_path)
-# print(f"Loaded Parquet with shape: {df.shape}")
-
-# settings = Settings(persist_directory=chroma_path)
-# client = Client(settings=settings)
-# try:
-#     client.delete_collection(collection_name)
-# except:
-#     pass
-# collection = client.create_collection(name=collection_name)
-
-# model = SentenceTransformer('all-MiniLM-L6-v2')
-# profiles = df.groupby(['time', 'latitude', 'longitude'])
-# print(f"Found {len(profiles)} unique profiles")
-
-# added_count = 0
-# for group_key, group in profiles:
-#     time, lat, lon = group_key
-#     summary = (f"Argo profile at {lat:.2f} lat, {lon:.2f} lon on {time}. "
-#                f"Temperature range: {group['temperature'].min():.1f}-{group['temperature'].max():.1f}°C, "
-#                f"Salinity mean: {group['salinity'].mean():.1f} PSU")
-#     embedding = model.encode(summary).tolist()
-#     profile_id = str(hash(group_key))
-#     collection.add(documents=[summary], embeddings=[embedding], ids=[profile_id])
-#     added_count += 1
-
-# print(f"Added {added_count} profiles to collection")
-# count = collection.count()
-# print(f"In-session count: {count}")
-
-# # Step 2: RAG Query (interactive loop)
-# print("\n=== STEP 2: Running RAG Query (Interactive Mode) ===")
-# print("Enter your query (type 'quit' to exit):")
-# llm = ChatOpenAI(
-#     model_name="mistralai/mistral-7b-instruct:free",
-#     openai_api_base="https://openrouter.ai/api/v1",
-#     openai_api_key=api_key,
-#     temperature=0.5,
-#     max_tokens=512
-# )
-
-# while True:
-#     query = input("> ").strip()
-#     if query.lower() == 'quit':
-#         print("Exiting interactive mode. Goodbye!")
-#         break
-
-#     results = collection.query(query_texts=[query], n_results=5)
-#     context = "\n".join(results['documents'][0])
-#     print(f"Retrieved context:\n{context}")
-
-#     # Generate SQL with diverse rules and examples
-#     prompt = ChatPromptTemplate.from_messages([
-#         ("system", "You are an ocean data expert. Return ONLY the SQL query as a single line with no explanations or extra text. Use EXTRACT(MONTH FROM time) = <month> for specific months, EXTRACT(YEAR FROM time) = EXTRACT(YEAR FROM CURRENT_DATE) for 'this year', or EXTRACT(MONTH FROM time) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM time) = EXTRACT(YEAR FROM CURRENT_DATE) for 'right now'. Target PostgreSQL syntax. For 'near <lat> lat', use latitude BETWEEN <lat - 0.1> AND <lat + 0.1>. For 'near equator', use latitude BETWEEN -10 AND 10. For 'nearest floats to <lat>, <lon>', use latitude BETWEEN <lat - 0.1> AND <lat + 0.1> AND longitude BETWEEN <lon - 0.1> AND <lon + 0.1> ORDER BY ABS(latitude - <lat>) + ABS(longitude - <lon>) LIMIT 5. For 'right now', add time >= NOW() AND time < NOW() + INTERVAL '1 day'. For regional queries (e.g., Indian Ocean), use latitude BETWEEN -10 AND 10 AND longitude BETWEEN 60 AND 100; for Arabian Sea, use latitude BETWEEN 5 AND 25 AND longitude BETWEEN 45 AND 75. Use context to inform ranges, but default to these rules if context is unclear or conflicts. Examples: 1. What’s the temperature like near 8.9 lat in June 2025 -> SELECT temperature FROM argo_profiles WHERE EXTRACT(MONTH FROM time) = 6 AND latitude BETWEEN 8.8 AND 9.0. 2. Nearest floats to 8.9, 68.0 right now -> SELECT * FROM argo_profiles WHERE latitude BETWEEN 8.8 AND 9.0 AND longitude BETWEEN 67.9 AND 68.1 AND time >= NOW() AND time < NOW() + INTERVAL '1 day' ORDER BY ABS(latitude - 8.9) + ABS(longitude - 68.0) LIMIT 5. 3. Compare salinity in the Arabian Sea for the last 6 months -> SELECT salinity FROM argo_profiles WHERE latitude BETWEEN 5 AND 25 AND longitude BETWEEN 45 AND 75 AND time > CURRENT_DATE - INTERVAL '6 months'."),
-#         ("user", "Based on this context: {context}\nTranslate to SQL for table argo_profiles (columns: time, latitude, longitude, pressure, temperature, salinity):\nUser query: {query}")
-#     ])
-#     chain = LLMChain(llm=llm, prompt=prompt)
-#     sql_response = chain.run({"query": query, "context": context}).strip()
-#     print(f"Raw LLM SQL response:\n{sql_response}")
-
-#     # SQL Fixer with stricter enforcement
-#     fixer_prompt = ChatPromptTemplate.from_messages([
-#         ("system", "You are a SQL expert. Return ONLY the SQL query as a single line, with no explanations, notes, or extra text. Fix for PostgreSQL syntax and ensure it is valid for table argo_profiles (columns: time, latitude, longitude, pressure, temperature, salinity). Do not alter the query intent (e.g., latitude or longitude ranges) unless there is a clear syntax error. Preserve the original intent from the raw query."),
-#         ("user", "Fix this SQL: {sql_response}")
-#     ])
-#     fixer_chain = LLMChain(llm=llm, prompt=fixer_prompt)
-#     sql_output = fixer_chain.run({"sql_response": sql_response}).strip()
-#     # Use regex to extract only the SQL query
-#     sql = re.search(r"SELECT\s+.*?(?:;|$)", sql_output, re.IGNORECASE | re.DOTALL).group(0).rstrip(';') if re.search(r"SELECT\s+.*?(?:;|$)", sql_output, re.IGNORECASE | re.DOTALL) else sql_output
-#     print(f"Fixed SQL:\n{sql}")
-
-#     # Execute SQL with error handling
-#     try:
-#         engine = create_engine(db_uri)
-#         df_result = pd.read_sql(sql, engine)
-#         print(f"SQL result shape: {df_result.shape}")
-#         print(f"Result head:\n{df_result.head().to_string()}")
-#     except Exception as e:
-#         print(f"SQL execution failed: {e}")
-#         print("Please ensure PostgreSQL is running and the argo_profiles table exists with the correct schema.")
-#         continue
-
-#     # Summarize (aggregate with chunking to handle large data)
-#     if 'df_result' in locals():
-#         if df_result.empty:
-#             response = "No data found for this query."
-#         else:
-#             # Chunk data if large to stay within token limits
-#             chunk_size = 100
-#             chunks = [df_result[i:i + chunk_size] for i in range(0, len(df_result), chunk_size)]
-#             summaries = []
-#             for chunk in chunks:
-#                 if not chunk.empty:
-#                     summary_prompt = ChatPromptTemplate.from_messages([
-#                         ("system", "You are an ocean data expert. Return ONLY the summary as clear, concise text with no explanations or extra text. Aggregate across all profiles in this chunk, reporting exact minimum, maximum, and average values for temperature to one decimal place if temperature is selected, or salinity if salinity is selected."),
-#                         ("user", "Summarize this oceanographic data in clear, concise language:\n{data}")
-#                     ])
-#                     summary_chain = LLMChain(llm=llm, prompt=summary_prompt)
-#                     summary = summary_chain.run({"data": chunk.to_string()}).strip()
-#                     summaries.append(summary)
-#             response = "; ".join(summaries) if summaries else "No valid summary generated."
-#         print(f"Final response:\n{response}")
-
-#     print("\nEnter your next query (type 'quit' to exit):")
-
-# print("\n✅ Interactive mode complete!")
-
-
-# updated code for better summarisation but not yet tested. The above commented out code is working fine as well
 import os
-import pandas as pd
-from langchain.chains import LLMChain  # Temporary
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
-from chromadb import Client
-from chromadb.config import Settings
-from sqlalchemy import create_engine
-from sentence_transformers import SentenceTransformer
 import re
+import traceback
+from typing import List, Dict, Tuple
+import pandas as pd
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+from sentence_transformers import SentenceTransformer
+import chromadb
+from chromadb.config import Settings
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from db.database import DB_URI
 
-# Load environment variables
-load_dotenv()
+# ------------------------------------------------------------
+# Paths and Environment
+# ------------------------------------------------------------
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.dirname(CURRENT_DIR)
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
 
-# Verify API key
-api_key = os.getenv('OPENROUTER_API_KEY')
-if not api_key:
-    raise ValueError("OPENROUTER_API_KEY not found in environment. Check .env file or set it manually.")
+load_dotenv(os.path.join(BACKEND_DIR, ".env"))
 
-# Paths
-base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-parquet_path = os.path.normpath(os.path.join(base_dir, 'data', 'processed', 'argo_profiles.parquet'))
-chroma_path = os.path.normpath(os.path.join(base_dir, 'db', 'chroma_db'))
-collection_name = 'argo_summaries'
-db_uri = 'postgresql://postgres:Aashi%401234@localhost:5432/argo_db'
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+PARQUET_PATH = os.path.join(PROJECT_ROOT, "data", "processed", "argo_profiles.parquet")
+CHROMA_PATH = os.path.join(PROJECT_ROOT, "db", "chroma_db")
+COLLECTION_NAME = "argo_summaries"
 
-# Step 1: Populating ChromaDB (run once at start)
-print("=== STEP 1: Populating ChromaDB ===")
-df = pd.read_parquet(parquet_path)
-print(f"Loaded Parquet with shape: {df.shape}")
+if not DB_URI:
+    raise ValueError("DB_URI not set in environment")
 
-settings = Settings(persist_directory=chroma_path)
-client = Client(settings=settings)
-try:
-    client.delete_collection(collection_name)
-except:
-    pass
-collection = client.create_collection(name=collection_name)
-
-model = SentenceTransformer('all-MiniLM-L6-v2')
-profiles = df.groupby(['time', 'latitude', 'longitude'])
-print(f"Found {len(profiles)} unique profiles")
-
-added_count = 0
-for group_key, group in profiles:
-    time, lat, lon = group_key
-    summary = (f"Argo profile at {lat:.2f} lat, {lon:.2f} lon on {time}. "
-               f"Temperature range: {group['temperature'].min():.1f}-{group['temperature'].max():.1f}°C, "
-               f"Salinity mean: {group['salinity'].mean():.1f} PSU")
-    embedding = model.encode(summary).tolist()
-    profile_id = str(hash(group_key))
-    collection.add(documents=[summary], embeddings=[embedding], ids=[profile_id])
-    added_count += 1
-
-print(f"Added {added_count} profiles to collection")
-count = collection.count()
-print(f"In-session count: {count}")
-
-# Step 2: RAG Query (interactive loop)
-print("\n=== STEP 2: Running RAG Query (Interactive Mode) ===")
-print("Enter your query (type 'quit' to exit). Note: Free model limit (50 requests/day) may be reached. Consider https://x.ai/grok for more quota.")
-llm = ChatOpenAI(
-    model_name="mistralai/mistral-7b-instruct:free",
-    openai_api_base="https://openrouter.ai/api/v1",
-    openai_api_key=api_key,
-    temperature=0.5,
-    max_tokens=512
-)
-
-while True:
-    query = input("> ").strip()
-    if query.lower() == 'quit':
-        print("Exiting interactive mode. Goodbye!")
-        break
-
-    results = collection.query(query_texts=[query], n_results=5)
-    context = "\n".join(results['documents'][0])
-    print(f"Retrieved context:\n{context}")
-
-    # Generate SQL with diverse rules and examples
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are an ocean data expert. Return ONLY the SQL query as a single line with no explanations or extra text. Use EXTRACT(MONTH FROM time) = <month> for specific months, EXTRACT(YEAR FROM time) = EXTRACT(YEAR FROM CURRENT_DATE) for 'this year', or EXTRACT(MONTH FROM time) = EXTRACT(MONTH FROM CURRENT_DATE) AND EXTRACT(YEAR FROM time) = EXTRACT(YEAR FROM CURRENT_DATE) for 'right now'. Target PostgreSQL syntax. For 'near <lat> lat', use latitude BETWEEN <lat - 0.1> AND <lat + 0.1>. For 'near equator', use latitude BETWEEN -10 AND 10. For 'nearest floats to <lat>, <lon>', use latitude BETWEEN <lat - 0.1> AND <lat + 0.1> AND longitude BETWEEN <lon - 0.1> AND <lon + 0.1> ORDER BY ABS(latitude - <lat>) + ABS(longitude - <lon>) LIMIT 5. For 'right now', add time >= NOW() AND time < NOW() + INTERVAL '1 day'. For regional queries (e.g., Indian Ocean), use latitude BETWEEN -10 AND 10 AND longitude BETWEEN 60 AND 100; for Arabian Sea, use latitude BETWEEN 5 AND 25 AND longitude BETWEEN 45 AND 75. Use context to inform ranges, but default to these rules if context is unclear or conflicts. Examples: 1. What’s the temperature like near 8.9 lat in June 2025 -> SELECT temperature FROM argo_profiles WHERE EXTRACT(MONTH FROM time) = 6 AND latitude BETWEEN 8.8 AND 9.0. 2. Nearest floats to 8.9, 68.0 right now -> SELECT * FROM argo_profiles WHERE latitude BETWEEN 8.8 AND 9.0 AND longitude BETWEEN 67.9 AND 68.1 AND time >= NOW() AND time < NOW() + INTERVAL '1 day' ORDER BY ABS(latitude - 8.9) + ABS(longitude - 68.0) LIMIT 5. 3. Compare salinity in the Arabian Sea for the last 6 months -> SELECT salinity FROM argo_profiles WHERE latitude BETWEEN 5 AND 25 AND longitude BETWEEN 45 AND 75 AND time > CURRENT_DATE - INTERVAL '6 months'."),
-        ("user", "Based on this context: {context}\nTranslate to SQL for table argo_profiles (columns: time, latitude, longitude, pressure, temperature, salinity):\nUser query: {query}")
-    ])
-    chain = LLMChain(llm=llm, prompt=prompt)
-    sql_response = chain.run({"query": query, "context": context}).strip()
-    print(f"Raw LLM SQL response:\n{sql_response}")
-
-    # SQL Fixer with stricter enforcement
-    fixer_prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a SQL expert. Return ONLY the SQL query as a single line, with no explanations, notes, or extra text. Fix for PostgreSQL syntax and ensure it is valid for table argo_profiles (columns: time, latitude, longitude, pressure, temperature, salinity). Do not alter the query intent (e.g., latitude or longitude ranges) unless there is a clear syntax error. Preserve the original intent from the raw query."),
-        ("user", "Fix this SQL: {sql_response}")
-    ])
-    fixer_chain = LLMChain(llm=llm, prompt=fixer_prompt)
-    sql_output = fixer_chain.run({"sql_response": sql_response}).strip()
-    # Use regex to extract only the SQL query
-    sql = re.search(r"SELECT\s+.*?(?:;|$)", sql_output, re.IGNORECASE | re.DOTALL).group(0).rstrip(';') if re.search(r"SELECT\s+.*?(?:;|$)", sql_output, re.IGNORECASE | re.DOTALL) else sql_output
-    print(f"Fixed SQL:\n{sql}")
-
-    # Execute SQL with error handling
+# ------------------------------------------------------------
+# ChromaDB helpers
+# ------------------------------------------------------------
+def ensure_collection(chroma_path: str, collection_name: str):
+    client = chromadb.PersistentClient(path=chroma_path)
     try:
-        engine = create_engine(db_uri)
-        df_result = pd.read_sql(sql, engine)
-        print(f"SQL result shape: {df_result.shape}")
-        print(f"Result head:\n{df_result.head().to_string()}")
+        return client.get_collection(collection_name)
+    except Exception:
+        return client.create_collection(collection_name)
+
+
+def populate_chroma_if_empty(parquet_path: str, chroma_path: str, collection_name: str) -> int:
+    collection = ensure_collection(chroma_path, collection_name)
+    try:
+        if collection.count() > 0:
+            return collection.count()
+    except:
+        pass
+
+    if not os.path.exists(parquet_path):
+        raise FileNotFoundError(f"Parquet not found: {parquet_path}")
+
+    df = pd.read_parquet(parquet_path)
+    if df.empty:
+        return 0
+
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    profiles = df.groupby(["time", "latitude", "longitude"])
+    ids, docs = [], []
+
+    for key, group in profiles:
+        time, lat, lon = key
+        summary = (
+            f"Argo profile at {float(lat):.2f} lat, {float(lon):.2f} lon on {time}. "
+            f"Temperature range: {float(group['temperature'].min()):.1f}-{float(group['temperature'].max()):.1f}°C, "
+            f"Salinity mean: {float(group['salinity'].mean()):.1f} PSU"
+        )
+        ids.append(str(hash(key)))
+        docs.append(summary)
+
+    if docs:
+        embeddings = model.encode(docs).tolist()
+        collection.add(ids=ids, documents=docs, embeddings=embeddings)
+
+    return len(docs)
+
+# ------------------------------------------------------------
+# SQL helper
+# ------------------------------------------------------------
+def run_sql(sql: str) -> pd.DataFrame:
+    engine = create_engine(DB_URI)
+    with engine.connect() as conn:
+        return pd.read_sql(text(sql), conn)
+
+# ------------------------------------------------------------
+# Summarization helpers
+# ------------------------------------------------------------
+def extract_numeric_stats(df: pd.DataFrame) -> Tuple[str, Dict[str, Dict[str, float]]]:
+    if df.empty:
+        return "No data found.", {}
+
+    lower_map = {c.lower(): c for c in df.columns}
+    targets = ["temperature", "salinity"]
+    stats_out: Dict[str, Dict[str, float]] = {}
+
+    for target in targets:
+        if target in lower_map:
+            col = lower_map[target]
+            series = pd.to_numeric(df[col], errors="coerce").dropna()
+            if not series.empty:
+                stats_out[target] = {
+                    "min": round(float(series.min()), 1),
+                    "max": round(float(series.max()), 1),
+                    "mean": round(float(series.mean()), 1),
+                }
+
+    if not stats_out:
+        return "No valid temperature or salinity data.", {}
+
+    parts = [f"{name}: min {s['min']}, max {s['max']}, avg {s['mean']}" for name, s in stats_out.items()]
+    return "; ".join(parts), stats_out
+
+
+def extract_stats_from_docs(docs: List[str]) -> Tuple[str, Dict[str, Dict[str, float]]]:
+    """
+    Parse temperature ranges and salinity means from retrieved document texts
+    to build approximate stats when SQL results are not available.
+    Expected pattern in docs:
+      "Temperature range: 3.0-28.2°C, Salinity mean: 35.4 PSU"
+    """
+    if not docs:
+        return "No data found.", {}
+
+    temp_lows: List[float] = []
+    temp_highs: List[float] = []
+    sal_means: List[float] = []
+
+    temp_re = re.compile(r"Temperature range:\s*([0-9]+(?:\\.[0-9]+)?)\s*-\s*([0-9]+(?:\\.[0-9]+)?)\s*°C", re.IGNORECASE)
+    sal_re = re.compile(r"Salinity mean:\s*([0-9]+(?:\\.[0-9]+)?)\s*PSU", re.IGNORECASE)
+
+    for doc in docs:
+        t = temp_re.search(doc)
+        if t:
+            try:
+                temp_lows.append(float(t.group(1)))
+                temp_highs.append(float(t.group(2)))
+            except Exception:
+                pass
+        s = sal_re.search(doc)
+        if s:
+            try:
+                sal_means.append(float(s.group(1)))
+            except Exception:
+                pass
+
+    stats_map: Dict[str, Dict[str, float]] = {}
+    parts: List[str] = []
+
+    if temp_lows and temp_highs:
+        t_min = min(temp_lows)
+        t_max = max(temp_highs)
+        t_mean = (sum(temp_lows + temp_highs) / (len(temp_lows) + len(temp_highs)))
+        stats_map["temperature"] = {"min": round(t_min, 1), "max": round(t_max, 1), "mean": round(t_mean, 1)}
+        t = stats_map["temperature"]
+        parts.append(f"temperature: min {t['min']}, max {t['max']}, avg {t['mean']}")
+
+    if sal_means:
+        s_min = min(sal_means)
+        s_max = max(sal_means)
+        s_mean = sum(sal_means) / len(sal_means)
+        stats_map["salinity"] = {"min": round(s_min, 1), "max": round(s_max, 1), "mean": round(s_mean, 1)}
+        s = stats_map["salinity"]
+        parts.append(f"salinity: min {s['min']}, max {s['max']}, avg {s['mean']}")
+
+    if not parts:
+        return "No valid temperature or salinity data.", {}
+
+    return "; ".join(parts), stats_map
+
+
+def summarize_with_llm_from_stats(llm: ChatOpenAI, stats_text: str, user_query: str) -> str:
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are an oceanographic data expert. Return concise summaries for non-experts."),
+        ("user",
+         "User Query: {query}\nComputed statistics: {stats}\n"
+         "Instructions:\n- Summarize trends, ranges, typical values.\n- Do not repeat raw rows.")
+    ])
+    chain = prompt | llm | StrOutputParser()
+    return chain.invoke({"query": user_query, "stats": stats_text}).strip()
+
+
+# ------------------------------------------------------------
+# Main RAG query function
+# ------------------------------------------------------------
+def rag_query(
+    user_query: str,
+    chroma_path: str = CHROMA_PATH,
+    collection_name: str = COLLECTION_NAME,
+    db_uri: str = DB_URI
+) -> str:
+    """
+    Process a natural language query using RAG:
+    - Retrieve relevant context from ChromaDB
+    - Generate SQL via LLM
+    - Execute SQL on PostgreSQL
+    - Summarize numeric stats using LLM
+    """
+    try:
+        # Step 1: Retrieve context
+        ensure_collection(chroma_path, collection_name)
+        client = chromadb.PersistentClient(path=chroma_path)
+        collection = client.get_collection(collection_name)
+        results = collection.query(query_texts=[user_query], n_results=5)
+        docs = results.get("documents", [[]])[0] if results else []
+        context = "\n".join(docs) or "No context found."
+
+        # Step 2: Initialize LLM if API key available
+        llm = ChatOpenAI(
+            model_name="mistralai/mistral-7b-instruct:free",
+            openai_api_base="https://openrouter.ai/api/v1",
+            openai_api_key=OPENROUTER_API_KEY,
+            temperature=0.5,
+            max_tokens=512
+        ) if OPENROUTER_API_KEY else None
+
+        # Step 3: Generate SQL if LLM available
+        sql = None
+        if llm:
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", "Return only a valid PostgreSQL SELECT query."),
+                ("user", "Context: {context}\nUser query: {query}")
+            ])
+            chain = prompt | llm | StrOutputParser()
+            sql = chain.invoke({"query": user_query, "context": context}).strip()
+            # Extract single SELECT
+            m = re.search(r"SELECT\s+.*?(?:;|$)", sql, re.IGNORECASE | re.DOTALL)
+            sql = (m.group(0).rstrip(";") if m else sql).strip()
+
+        # Step 4: Execute SQL
+        df_result = pd.DataFrame()
+        if sql:
+            try:
+                engine = create_engine(db_uri)
+                df_result = pd.read_sql(text(sql), engine)
+            except Exception as e:
+                print(f"SQL execution failed: {e}")
+
+        # Step 5: Summarize numeric stats
+        stats_text, stats_map = extract_numeric_stats(df_result)
+        if df_result.empty or not stats_map:
+            # Fallback: derive stats from retrieved docs and summarize with LLM if available
+            stats_text_docs, stats_map_docs = extract_stats_from_docs(docs)
+            if stats_map_docs:
+                if llm:
+                    return summarize_with_llm_from_stats(llm, stats_text_docs, user_query)
+                return f"Summary (no LLM): {stats_text_docs}"
+            return context
+
+        if llm:
+            return summarize_with_llm_from_stats(llm, stats_text, user_query)
+        return f"Summary (no LLM): {stats_text}"
+
     except Exception as e:
-        print(f"SQL execution failed: {e}")
-        print("Please ensure PostgreSQL is running and the argo_profiles table exists with the correct schema.")
-        continue
+        traceback.print_exc()
+        return f"Error in rag_query: {e}"
 
-    # Summarize (pre-aggregate to avoid token limit issues)
-    if 'df_result' in locals():
-        if df_result.empty:
-            response = "No data found for this query."
-        else:
-            param = "temperature" if "temperature" in sql.lower() else "salinity" if "salinity" in sql.lower() else None
-            if param:
-                agg = df_result[param].agg(['min', 'max', 'mean']).round(1)
-                summary_prompt = ChatPromptTemplate.from_messages([
-                    ("system", f"You are an ocean data expert. Return ONLY the summary as clear, concise text with no explanations or extra text. Report exact minimum, maximum, and average values for {param} to one decimal place based on the provided stats."),
-                    ("user", f"Summarize this oceanographic data: min {agg['min']}, max {agg['max']}, avg {agg['mean']}")
-                ])
-                summary_chain = LLMChain(llm=llm, prompt=summary_prompt)
-                response = summary_chain.run({}).strip()
-            else:
-                response = "No valid parameter (temperature or salinity) found for summarization."
-        print(f"Final response:\n{response}")
+# ------------------------------------------------------------
+# CLI interactive mode
+# ------------------------------------------------------------
+def main():
+    inserted = populate_chroma_if_empty(PARQUET_PATH, CHROMA_PATH, COLLECTION_NAME)
+    if inserted:
+        print(f"Populated {inserted} documents into '{COLLECTION_NAME}'.")
 
-    print("\nEnter your next query (type 'quit' to exit):")
+    print("\n=== Interactive RAG CLI ===")
+    while True:
+        query = input("> ").strip()
+        if query.lower() == "quit":
+            break
+        response = rag_query(query)
+        print(f"\nResponse:\n{response}\n")
 
-print("\n✅ Interactive mode complete!")
+    print("✅ Interactive session ended.")
+
+
+if __name__ == "__main__":
+    main()

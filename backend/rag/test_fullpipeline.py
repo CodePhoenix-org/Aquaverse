@@ -10,6 +10,7 @@ from sentence_transformers import SentenceTransformer
 import re
 from dotenv import load_dotenv
 from db.database import DB_URI
+
 # Load environment variables
 load_dotenv()
 

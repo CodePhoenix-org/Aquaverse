@@ -7,7 +7,7 @@ from langchain_community.llms import HuggingFaceHub
 from chromadb import Client
 from chromadb.config import Settings
 from sqlalchemy import create_engine
-
+from db.database import DB_URI
 
 # Load environment variables from .env file
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
@@ -94,5 +94,5 @@ def rag_query(user_query, chroma_path, collection_name, db_uri):
 # Test the function
 if __name__ == "__main__":
     test_query = "Show salinity profiles near equator in March 2025"
-    result = rag_query(test_query, 'C:/Users/Dell/Desktop/Hackathons/SIH-25/db/chroma_db', 'argo_summaries', 'postgresql://postgres:Aashi@1234@localhost:5432/argo_db')
+    result = rag_query(test_query, 'C:/Users/Gagan/Desktop/Sea Sheperds/Aquaverse/db/chroma_db', 'argo_summaries', DB_URI)
     print(f"TEST: Query result:\n{result}")
