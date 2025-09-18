@@ -1,43 +1,40 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, CircleMarker, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
-// Fix for default markers in react-leaflet
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+const activeIcon = new L.Icon({
+  iconUrl: 'https://cdn-icons-png.flaticon.com/512/190/190411.png', // green marker
+  iconSize: [30, 30],
+  iconAnchor: [15, 30],
+  popupAnchor: [0, -30],
+});
+
+const inactiveIcon = new L.Icon({
+  iconUrl: 'https://cdn-icons-png.flaticon.com/512/190/190406.png', // red marker
+  iconSize: [30, 30],
+  iconAnchor: [15, 30],
+  popupAnchor: [0, -30],
 });
 
 const FloatMap = ({ data }) => {
   const [mapData, setMapData] = useState(null);
   const mapRef = useRef(null);
-  
-  // Default center on Indian Ocean as specified in requirements
+
   const defaultCenter = [-20, 80];
   const defaultZoom = 4;
 
   useEffect(() => {
-    if (data && (data.floats || data.trajectories)) {
-      setMapData(data);
-    }
+    if (data && (data.floats || data.trajectories)) setMapData(data);
   }, [data]);
 
-  // Ensure proper sizing when the map mounts or the view changes
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (mapRef.current) {
-        try {
-          mapRef.current.invalidateSize(false);
-        } catch (e) {}
-      }
+      if (mapRef.current) mapRef.current.invalidateSize(false);
     }, 150);
     return () => clearTimeout(timer);
   });
 
-  // Generate sample data for demo purposes
   const sampleFloats = [
     { id: 'ARGO_001', lat: -10.5, lng: 75.2, status: 'active', lastUpdate: '2023-03-15' },
     { id: 'ARGO_002', lat: -15.3, lng: 82.1, status: 'active', lastUpdate: '2023-03-14' },
@@ -46,17 +43,11 @@ const FloatMap = ({ data }) => {
   ];
 
   const sampleTrajectories = [
-    [
-      [-10.5, 75.2], [-11.2, 75.8], [-12.1, 76.3], [-13.0, 76.9]
-    ],
-    [
-      [-15.3, 82.1], [-16.0, 82.7], [-16.8, 83.2], [-17.5, 83.8]
-    ]
+    [[-10.5, 75.2], [-11.2, 75.8], [-12.1, 76.3], [-13.0, 76.9]],
+    [[-15.3, 82.1], [-16.0, 82.7], [-16.8, 83.2], [-17.5, 83.8]],
   ];
 
-  const getMarkerColor = (status) => {
-    return status === 'active' ? 'green' : 'red';
-  };
+  const getIcon = (status) => (status === 'active' ? activeIcon : inactiveIcon);
 
   return (
     <div className="h-full">
@@ -66,98 +57,100 @@ const FloatMap = ({ data }) => {
           Interactive map showing float trajectories and current positions
         </p>
       </div>
-      
+
       <div className="h-full" style={{ minHeight: 'calc(100vh - 220px)' }}>
         <MapContainer
           center={defaultCenter}
           zoom={defaultZoom}
-          whenCreated={(map) => { mapRef.current = map; setTimeout(()=>map.invalidateSize(false), 50); }}
+          whenCreated={(map) => {
+            mapRef.current = map;
+            setTimeout(() => map.invalidateSize(false), 50);
+          }}
           style={{ height: '100%', width: '100%' }}
         >
+          {/* MapTiler TileLayer */}
           <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution='&copy; <a href="https://www.maptiler.com/">MapTiler</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://api.maptiler.com/maps/streets/{z}/{x}/{y}.png?key=guH98SuP1qEfBsrk2TPM"
           />
-          
-          {/* Render sample float positions only if no real data */}
-          {!mapData && sampleFloats.map((float) => (
-            <CircleMarker
-              key={float.id}
-              center={[float.lat, float.lng]}
-              radius={8}
-              fillColor={getMarkerColor(float.status)}
-              color={getMarkerColor(float.status)}
-              weight={2}
-              opacity={0.8}
-              fillOpacity={0.6}
-            >
-              <Popup>
-                <div className="text-sm">
-                  <strong>Float ID:</strong> {float.id}<br />
-                  <strong>Status:</strong> {float.status}<br />
-                  <strong>Position:</strong> {float.lat.toFixed(2)}°, {float.lng.toFixed(2)}°<br />
-                  <strong>Last Update:</strong> {float.lastUpdate}
-                </div>
-              </Popup>
-            </CircleMarker>
-          ))}
-          
-          {/* Render sample trajectories only if no real data */}
-          {!mapData && sampleTrajectories.map((trajectory, index) => (
-            <Polyline
-              key={`sample-trajectory-${index}`}
-              positions={trajectory}
-              color="blue"
-              weight={2}
-              opacity={0.6}
-            />
-          ))}
-          
-          {/* Render actual trajectories if available */}
-          {mapData && mapData.trajectories && mapData.trajectories.map((trajectory, index) => (
-            <Polyline
-              key={`real-trajectory-${index}`}
-              positions={trajectory.points || trajectory}
-              color="blue"
-              weight={2}
-              opacity={0.8}
-            />
-          ))}
-          
-          {/* Render actual data if available */}
-          {mapData && mapData.floats && mapData.floats.map((float) => (
-            <CircleMarker
-              key={float.id}
-              center={[float.latitude, float.longitude]}
-              radius={8}
-              fillColor={getMarkerColor(float.status)}
-              color={getMarkerColor(float.status)}
-              weight={2}
-              opacity={0.8}
-              fillOpacity={0.6}
-            >
-              <Popup>
-                <div className="text-sm">
-                  <strong>Float ID:</strong> {float.id}<br />
-                  <strong>Status:</strong> {float.status}<br />
-                  <strong>Position:</strong> {float.latitude?.toFixed(2)}°, {float.longitude?.toFixed(2)}°<br />
-                  <strong>Last Update:</strong> {float.lastUpdate}
-                </div>
-              </Popup>
-            </CircleMarker>
-          ))}
+
+          {/* Sample floats */}
+          {!mapData &&
+            sampleFloats.map((float) => (
+              <Marker key={float.id} position={[float.lat, float.lng]} icon={getIcon(float.status)}>
+                <Popup>
+                  <div className="text-sm">
+                    <strong>Float ID:</strong> {float.id}
+                    <br />
+                    <strong>Status:</strong> {float.status}
+                    <br />
+                    <strong>Position:</strong> {float.lat.toFixed(2)}°, {float.lng.toFixed(2)}°
+                    <br />
+                    <strong>Last Update:</strong> {float.lastUpdate}
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+
+          {/* Sample trajectories */}
+          {!mapData &&
+            sampleTrajectories.map((trajectory, index) => (
+              <Polyline
+                key={`sample-trajectory-${index}`}
+                positions={trajectory}
+                color="blue"
+                weight={2}
+                opacity={0.6}
+              />
+            ))}
+
+          {/* Actual trajectories */}
+          {mapData &&
+            mapData.trajectories &&
+            mapData.trajectories.map((trajectory, index) => (
+              <Polyline
+                key={`real-trajectory-${index}`}
+                positions={trajectory.points || trajectory}
+                color="blue"
+                weight={2}
+                opacity={0.8}
+              />
+            ))}
+
+          {/* Actual floats */}
+          {mapData &&
+            mapData.floats &&
+            mapData.floats.map((float) => (
+              <Marker
+                key={float.id}
+                position={[float.latitude, float.longitude]}
+                icon={getIcon(float.status)}
+              >
+                <Popup>
+                  <div className="text-sm">
+                    <strong>Float ID:</strong> {float.id}
+                    <br />
+                    <strong>Status:</strong> {float.status}
+                    <br />
+                    <strong>Position:</strong> {float.latitude?.toFixed(2)}°, {float.longitude?.toFixed(2)}°
+                    <br />
+                    <strong>Last Update:</strong> {float.lastUpdate}
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
         </MapContainer>
       </div>
-      
+
       {/* Legend */}
       <div className="bg-white border-t border-gray-200 p-2">
         <div className="flex items-center space-x-4 text-xs">
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+            <img src="https://cdn-icons-png.flaticon.com/512/190/190411.png" className="w-4 h-4" />
             <span>Active Floats</span>
           </div>
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+            <img src="https://cdn-icons-png.flaticon.com/512/190/190406.png" className="w-4 h-4" />
             <span>Inactive Floats</span>
           </div>
           <div className="flex items-center space-x-1">

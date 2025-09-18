@@ -7,10 +7,12 @@ function Navbar({ onOpenChat }) {
   const handleLogout = () => {
     try {
       localStorage.removeItem("auth_token");
+      localStorage.removeItem("user");
+      console.log("User logged out successfully");
     } catch (err) {
-      // noop
+      console.error("Error during logout:", err);
     }
-    navigate("/");
+    navigate("/"); // redirect to login or landing page
   };
 
   return (
@@ -27,41 +29,22 @@ function Navbar({ onOpenChat }) {
         </div>
 
         <nav className="flex items-center space-x-2">
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="px-3 py-2 rounded-md text-sm hover:bg-white/10"
-          >
+          <button onClick={() => navigate("/dashboard")} className="px-3 py-2 rounded-md text-sm hover:bg-white/10">
             Dashboard
           </button>
-          <button
-            onClick={() => navigate("/profile")}
-            className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2"
-            title="View Profile"
-          >
+          <button onClick={() => navigate("/profile")} className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2">
             <User className="w-4 h-4" />
             <span>Profile</span>
           </button>
-          <button
-            onClick={() => navigate("/history")}
-            className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2"
-            title="History"
-          >
+          <button onClick={() => navigate("/history")} className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2">
             <HistoryIcon className="w-4 h-4" />
             <span>History</span>
           </button>
-          <button
-            onClick={onOpenChat}
-            className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2"
-            title="Open Chat"
-          >
+          <button onClick={onOpenChat} className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2">
             <MessageCircle className="w-4 h-4" />
             <span>Chat</span>
           </button>
-          <button
-            onClick={handleLogout}
-            className="ml-2 px-3 py-2 rounded-md text-sm bg-white/10 hover:bg-white/20 border border-white/20 inline-flex items-center space-x-2"
-            title="Logout"
-          >
+          <button onClick={handleLogout} className="ml-2 px-3 py-2 rounded-md text-sm bg-white/10 hover:bg-white/20 border border-white/20 inline-flex items-center space-x-2">
             <LogOut className="w-4 h-4" />
             <span>Logout</span>
           </button>
@@ -72,5 +55,3 @@ function Navbar({ onOpenChat }) {
 }
 
 export default Navbar;
-
-

@@ -1,112 +1,100 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
 import { Eye, EyeOff, User, Mail, Lock, ArrowRight } from "lucide-react";
+import axios from "axios";
+import { useNavigate } from "react-router-dom";
 
-export default function SignupForm() {
+const SignupForm = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-    organization: "",
-    fieldOfInterest: "",
-  });
+  const [apiUrl, setApiUrl] = useState("");
+  const navigate = useNavigate();
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  useEffect(() => {
+    setApiUrl("http://127.0.0.1:8000/auth/signup");
+  }, []);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    console.log("Signup attempt:", formData);
-    alert("Signup functionality would be implemented here");
+  const { register, handleSubmit, watch, formState: { errors } } = useForm();
+  const password = watch("password");
+
+  const onSubmit = async (data) => {
+    try {
+      const payload = {
+        name: `${data.firstName} ${data.lastName}`,
+        email: data.email,
+        password: data.password,
+        confirm_password: data.confirmPassword,
+      };
+
+      console.log("Payload to send:", payload);
+
+      const res = await axios.post(apiUrl, payload, {
+        headers: { "Content-Type": "application/json" },
+      });
+
+      console.log("Signup success:", res.data);
+      localStorage.setItem("user", JSON.stringify(res.data));
+      alert("Signed up sucessfully ✅"); //can Implement react-toastify later
+      navigate("/dashboard");
+
+    } catch (err) {
+      console.error("Signup Axios error object:", err);
+      alert(err.response?.data?.detail || "Signup failed!");
+    }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Name Fields */}
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {/* First + Last Name */}
       <div className="grid grid-cols-2 gap-4">
         <div className="relative group">
           <User className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
           <input
+            {...register("firstName", { required: "First Name is required" })}
             type="text"
-            name="firstName"
             placeholder="First Name"
-            value={formData.firstName}
-            onChange={handleChange}
             className="w-full pl-12 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-            required
           />
+          {errors.firstName && <span className="text-red-500 text-xs">{errors.firstName.message}</span>}
         </div>
         <div className="relative group">
           <User className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
           <input
+            {...register("lastName", { required: "Last Name is required" })}
             type="text"
-            name="lastName"
             placeholder="Last Name"
-            value={formData.lastName}
-            onChange={handleChange}
             className="w-full pl-12 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-            required
           />
+          {errors.lastName && <span className="text-red-500 text-xs">{errors.lastName.message}</span>}
         </div>
       </div>
-
-      {/* Organization */}
-      <input
-        type="text"
-        name="organization"
-        placeholder="Organization/Institution (Optional)"
-        value={formData.organization}
-        onChange={handleChange}
-        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-      />
-
-      {/* Field of Interest */}
-      <select
-        name="fieldOfInterest"
-        value={formData.fieldOfInterest}
-        onChange={handleChange}
-        className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-        required
-      >
-        <option value="" className="bg-slate-800">Field of Interest</option>
-        <option value="marine-biology" className="bg-slate-800">Marine Biology</option>
-        <option value="physical-oceanography" className="bg-slate-800">Physical Oceanography</option>
-        <option value="chemical-oceanography" className="bg-slate-800">Chemical Oceanography</option>
-        <option value="geological-oceanography" className="bg-slate-800">Geological Oceanography</option>
-        <option value="climate-science" className="bg-slate-800">Climate Science</option>
-        <option value="conservation" className="bg-slate-800">Marine Conservation</option>
-        <option value="other" className="bg-slate-800">Other</option>
-      </select>
 
       {/* Email */}
       <div className="relative group">
         <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
         <input
+          {...register("email", {
+            required: "Email is required",
+            pattern: { value: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, message: "Invalid email address" },
+          })}
           type="email"
-          name="email"
           placeholder="Email Address"
-          value={formData.email}
-          onChange={handleChange}
           className="w-full pl-12 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-          required
         />
+        {errors.email && <span className="text-red-500 text-xs">{errors.email.message}</span>}
       </div>
 
       {/* Password */}
       <div className="relative group">
         <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
         <input
+          {...register("password", {
+            required: "Password is required",
+            minLength: { value: 6, message: "Password must be at least 6 characters" },
+          })}
           type={showPassword ? "text" : "password"}
-          name="password"
           placeholder="Password"
-          value={formData.password}
-          onChange={handleChange}
           className="w-full pl-12 pr-12 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-          required
         />
         <button
           type="button"
@@ -115,19 +103,20 @@ export default function SignupForm() {
         >
           {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
         </button>
+        {errors.password && <span className="text-red-500 text-xs">{errors.password.message}</span>}
       </div>
 
       {/* Confirm Password */}
       <div className="relative group">
         <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
         <input
+          {...register("confirmPassword", {
+            required: "Please confirm your password",
+            validate: (value) => value === password || "Passwords do not match",
+          })}
           type={showConfirmPassword ? "text" : "password"}
-          name="confirmPassword"
           placeholder="Confirm Password"
-          value={formData.confirmPassword}
-          onChange={handleChange}
           className="w-full pl-12 pr-12 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-          required
         />
         <button
           type="button"
@@ -136,6 +125,7 @@ export default function SignupForm() {
         >
           {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
         </button>
+        {errors.confirmPassword && <span className="text-red-500 text-xs">{errors.confirmPassword.message}</span>}
       </div>
 
       {/* Submit */}
@@ -148,4 +138,6 @@ export default function SignupForm() {
       </button>
     </form>
   );
-}
+};
+
+export default SignupForm;
