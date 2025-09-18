@@ -75,10 +75,9 @@ const ChatInterface = ({ onDataReceived }) => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Chat Header */}
-      <div className="bg-blue-600 text-white p-4">
-        <h2 className="text-lg font-semibold">ARGO Data Assistant</h2>
-        <p className="text-blue-100 text-sm">Ask me about ocean data, floats, and profiles</p>
+      {/* Chat Header (clean, single line) */}
+      <div className="bg-gradient-to-r from-emerald-600 to-fuchsia-600 text-white p-3">
+        <h2 className="text-base font-semibold">Ask me about ocean data, floats, and profiles</h2>
       </div>
 
       {/* Messages Area */}
@@ -126,7 +125,7 @@ const ChatInterface = ({ onDataReceived }) => {
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="Ask about ARGO data (e.g., 'Show temperature profiles in the Indian Ocean')"
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
             rows="2"
             disabled={isLoading}
           />

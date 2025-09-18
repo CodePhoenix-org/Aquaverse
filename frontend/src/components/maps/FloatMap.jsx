@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, CircleMarker, Polyline } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -13,6 +13,7 @@ L.Icon.Default.mergeOptions({
 
 const FloatMap = ({ data }) => {
   const [mapData, setMapData] = useState(null);
+  const mapRef = useRef(null);
   
   // Default center on Indian Ocean as specified in requirements
   const defaultCenter = [-20, 80];
@@ -23,6 +24,18 @@ const FloatMap = ({ data }) => {
       setMapData(data);
     }
   }, [data]);
+
+  // Ensure proper sizing when the map mounts or the view changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (mapRef.current) {
+        try {
+          mapRef.current.invalidateSize(false);
+        } catch (e) {}
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  });
 
   // Generate sample data for demo purposes
   const sampleFloats = [
@@ -54,10 +67,11 @@ const FloatMap = ({ data }) => {
         </p>
       </div>
       
-      <div className="h-full" style={{ minHeight: '400px' }}>
+      <div className="h-full" style={{ minHeight: 'calc(100vh - 220px)' }}>
         <MapContainer
           center={defaultCenter}
           zoom={defaultZoom}
+          whenCreated={(map) => { mapRef.current = map; setTimeout(()=>map.invalidateSize(false), 50); }}
           style={{ height: '100%', width: '100%' }}
         >
           <TileLayer
