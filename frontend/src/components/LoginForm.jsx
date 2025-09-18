@@ -3,36 +3,38 @@ import { useForm } from "react-hook-form";
 import axios from "axios";
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/Authcontext"; 
 
 const LoginForm = () => {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuth(); 
 
-  const { register, handleSubmit, formState: { errors } } = useForm();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm();
 
   const onSubmit = async (data) => {
     try {
-      console.log("Login attempt:", data);
-
-      const payload = {
+      const res = await axios.post("http://127.0.0.1:8000/auth/login", {
         email: data.email,
         password: data.password,
-      };
-
-      const res = await axios.post("http://127.0.0.1:8000/auth/login", payload, {
-        headers: { "Content-Type": "application/json" },
       });
 
-      console.log("Login success:", res.data);
-
-      // Save token & user info
+      // Store token
       localStorage.setItem("auth_token", res.data.access_token);
-      // Optionally store user info if your backend sends it
-      // localStorage.setItem("user", JSON.stringify(res.data.user));
+
+      // Store user object (ensure API returns user info)
+      const userData = res.data.user || res.data; 
+      localStorage.setItem("user", JSON.stringify(userData));
+
+      // Update AuthContext
+      login(userData);
 
       navigate("/dashboard");
     } catch (err) {
-      console.error("Login error:", err.response?.data || err.message);
       alert(err.response?.data?.detail || "Login failed!");
     }
   };
@@ -53,7 +55,9 @@ const LoginForm = () => {
           placeholder="Email Address"
           className="w-full pl-12 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
         />
-        {errors.email && <span className="text-red-500 text-xs">{errors.email.message}</span>}
+        {errors.email && (
+          <span className="text-red-500 text-xs">{errors.email.message}</span>
+        )}
       </div>
 
       <div className="relative group">
@@ -61,7 +65,10 @@ const LoginForm = () => {
         <input
           {...register("password", {
             required: "Password is required",
-            minLength: { value: 6, message: "Password must be at least 6 characters" },
+            minLength: {
+              value: 6,
+              message: "Password must be at least 6 characters",
+            },
           })}
           type={showPassword ? "text" : "password"}
           placeholder="Password"
@@ -74,7 +81,9 @@ const LoginForm = () => {
         >
           {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
         </button>
-        {errors.password && <span className="text-red-500 text-xs">{errors.password.message}</span>}
+        {errors.password && (
+          <span className="text-red-500 text-xs">{errors.password.message}</span>
+        )}
       </div>
 
       <button

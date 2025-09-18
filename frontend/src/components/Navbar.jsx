@@ -1,7 +1,11 @@
-import { useNavigate } from "react-router-dom";
-import { LogOut, User, History as HistoryIcon, MessageCircle } from "lucide-react";
-
-function Navbar({ onOpenChat }) {
+import { Link, useNavigate } from "react-router-dom";
+import {
+  LogOut,
+  User,
+  History as HistoryIcon,
+  MessageCircle,
+} from "lucide-react";
+const Navbar = ({ onOpenChat }) => {
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -29,22 +33,43 @@ function Navbar({ onOpenChat }) {
         </div>
 
         <nav className="flex items-center space-x-2">
-          <button onClick={() => navigate("/dashboard")} className="px-3 py-2 rounded-md text-sm hover:bg-white/10">
+          <Link
+            to="/dashboard"
+            className="px-3 py-2 rounded-md text-sm hover:bg-white/10"
+          >
             Dashboard
-          </button>
-          <button onClick={() => navigate("/profile")} className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2">
+          </Link>
+
+          <Link
+            to="/profile"
+            className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2"
+          >
             <User className="w-4 h-4" />
             <span>Profile</span>
-          </button>
-          <button onClick={() => navigate("/history")} className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2">
+          </Link>
+
+          <Link
+            to="/history"
+            className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2"
+          >
             <HistoryIcon className="w-4 h-4" />
             <span>History</span>
-          </button>
-          <button onClick={onOpenChat} className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2">
+          </Link>
+
+          {/* Keep as button since it's triggering a chat open */}
+          <button
+            onClick={onOpenChat}
+            className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2"
+          >
             <MessageCircle className="w-4 h-4" />
             <span>Chat</span>
           </button>
-          <button onClick={handleLogout} className="ml-2 px-3 py-2 rounded-md text-sm bg-white/10 hover:bg-white/20 border border-white/20 inline-flex items-center space-x-2">
+
+          {/* Logout button */}
+          <button
+            onClick={handleLogout}
+            className="ml-2 px-3 py-2 rounded-md text-sm bg-white/10 hover:bg-white/20 border border-white/20 inline-flex items-center space-x-2"
+          >
             <LogOut className="w-4 h-4" />
             <span>Logout</span>
           </button>
@@ -52,6 +77,6 @@ function Navbar({ onOpenChat }) {
       </div>
     </header>
   );
-}
+};
 
 export default Navbar;

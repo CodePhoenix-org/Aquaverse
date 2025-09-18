@@ -8,35 +8,35 @@ const Chatbot = () => {
   const [loading, setLoading] = useState(false);
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
-    const newMessages = [...messages, { sender: "user", text: input }];
-    setMessages(newMessages);
-    setInput("");
-    setLoading(true);
+  if (!input.trim()) return;
+  const newMessages = [...messages, { sender: "user", text: input }];
+  setMessages(newMessages);
+  setInput("");
+  setLoading(true);
 
-    try {
-      const res = await fetch("http://127.0.0.1:8000/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: input }),
-      });
+  try {
+    const res = await fetch("http://127.0.0.1:8000/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: input }),
+    });
 
-      const data = await res.json();
+    const data = await res.json();
 
-      setMessages([
-        ...newMessages,
-        { sender: "bot", text: data.text || data.reply || "⚠️ No response" },
-      ]);
-    } catch (err) {
-      console.error("Error:", err);
-      setMessages([
-        ...newMessages,
-        { sender: "bot", text: "⚠️ Server error." },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Split answer by newline for better chat formatting
+    const answerText = data?.answer || "⚠️ No response";
+    const answerLines = answerText.split("\n");
+
+    const botMessages = answerLines.map((line) => ({ sender: "bot", text: line }));
+
+    setMessages([...newMessages, ...botMessages]);
+  } catch (err) {
+    console.error("Error:", err);
+    setMessages([...newMessages, { sender: "bot", text: "⚠️ Server error." }]);
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="flex flex-col h-[600px] max-w-2xl mx-auto bg-white/5 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden border border-white/10">
