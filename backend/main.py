@@ -53,8 +53,8 @@ async def chat(req: ChatRequest):
             collection_name=COLLECTION_NAME,
             db_uri=DB_URI
         )
-        
-        return JSONResponse(content={"answer": result or "No relevant information found."})
-    
+
+        return {"message": result or "No relevant information found.", "data": None}
+
     except Exception as e:
-        return {"error": str(e)}
+        return {"message": f"⚠️ Error: {str(e)}", "data": None}

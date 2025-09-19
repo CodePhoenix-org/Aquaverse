@@ -26,5 +26,3 @@ class Profile(Base):
     salinity = Column(Float)
 
 
-class ChatRequest(BaseModel):
-    message:str

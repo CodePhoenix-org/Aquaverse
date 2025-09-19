@@ -85,7 +85,7 @@ def run_sql(sql: str) -> pd.DataFrame:
         return pd.read_sql(text(sql), conn)
 
 # ------------------------------------------------------------
-# Summarization helpers
+# Enhanced Summarization helpers
 # ------------------------------------------------------------
 def extract_numeric_stats(df: pd.DataFrame) -> Tuple[str, Dict[str, Dict[str, float]]]:
     """Extract numeric statistics from SQL results."""
@@ -170,83 +170,245 @@ def extract_stats_from_docs(docs: List[str]) -> Tuple[str, Dict[str, Dict[str, f
     return "; ".join(parts), stats_map
 
 
-def create_simple_summary_from_stats(stats_text: str, user_query: str) -> str:
+def create_enhanced_simple_summary_from_stats(stats_text: str, user_query: str) -> str:
     """
-    Create a simple summary when LLM is not available.
+    Enhanced fallback summary when LLM is not available.
+    Creates more interpretive summaries rather than just listing numbers.
     """
     if "No valid" in stats_text or "No data" in stats_text:
         return "No oceanographic data found matching your query."
     
-    # Parse the stats to create a more readable summary
     parts = []
-    if "temperature:" in stats_text.lower():
-        temp_match = re.search(r"temperature:\s*min\s*([\d.]+),\s*max\s*([\d.]+),\s*avg\s*([\d.]+)", stats_text.lower())
-        if temp_match:
-            min_t, max_t, avg_t = temp_match.groups()
-            parts.append(f"Temperature ranges from {min_t}°C to {max_t}°C with an average of {avg_t}°C")
+    water_mass_indicators = []
     
-    if "salinity:" in stats_text.lower():
-        sal_match = re.search(r"salinity:\s*min\s*([\d.]+),\s*max\s*([\d.]+),\s*avg\s*([\d.]+)", stats_text.lower())
-        if sal_match:
-            min_s, max_s, avg_s = sal_match.groups()
-            if float(max_s) - float(min_s) < 2.0:  # Stable salinity
-                parts.append(f"Salinity is relatively stable, averaging {avg_s} PSU")
-            else:
-                parts.append(f"Salinity varies from {min_s} to {max_s} PSU with an average of {avg_s} PSU")
+    # Parse temperature data
+    temp_match = re.search(r"temperature:\s*min\s*([\d.]+),\s*max\s*([\d.]+),\s*avg\s*([\d.]+)", stats_text.lower())
+    if temp_match:
+        min_t, max_t, avg_t = map(float, temp_match.groups())
+        temp_range = max_t - min_t
+        
+        if temp_range > 15:
+            parts.append(f"Water shows strong temperature stratification, ranging from {min_t}°C to {max_t}°C")
+            water_mass_indicators.append("mixed water column")
+        elif temp_range > 5:
+            parts.append(f"Moderate temperature variation from {min_t}°C to {max_t}°C (avg: {avg_t}°C)")
+            water_mass_indicators.append("some vertical mixing")
+        else:
+            parts.append(f"Relatively uniform temperature around {avg_t}°C")
+            water_mass_indicators.append("stable water mass")
+        
+        # Temperature classification
+        if avg_t > 25:
+            water_mass_indicators.append("tropical surface water")
+        elif avg_t > 15:
+            water_mass_indicators.append("temperate water")
+        elif avg_t > 5:
+            water_mass_indicators.append("cool water mass")
+        else:
+            water_mass_indicators.append("cold/deep water")
     
-    if parts:
-        return ". ".join(parts) + "."
-    return stats_text
+    # Parse salinity data
+    sal_match = re.search(r"salinity:\s*min\s*([\d.]+),\s*max\s*([\d.]+),\s*avg\s*([\d.]+)", stats_text.lower())
+    if sal_match:
+        min_s, max_s, avg_s = map(float, sal_match.groups())
+        sal_range = max_s - min_s
+        
+        if sal_range < 0.5:
+            parts.append(f"Salinity is very stable at {avg_s} PSU")
+        elif sal_range < 2.0:
+            parts.append(f"Salinity shows minor variation ({min_s}-{max_s} PSU)")
+        else:
+            parts.append(f"Salinity varies significantly from {min_s} to {max_s} PSU")
+            water_mass_indicators.append("water mass mixing")
+        
+        # Salinity classification
+        if avg_s > 35.5:
+            water_mass_indicators.append("high-salinity oceanic water")
+        elif avg_s > 34.5:
+            water_mass_indicators.append("typical oceanic conditions")
+        elif avg_s > 32:
+            water_mass_indicators.append("coastal influence detected")
+        else:
+            water_mass_indicators.append("freshwater influence")
+    
+    # Combine into meaningful summary
+    result = ". ".join(parts)
+    if water_mass_indicators:
+        unique_indicators = list(dict.fromkeys(water_mass_indicators))  # Remove duplicates while preserving order
+        result += f". This suggests {', '.join(unique_indicators[:2])}"  # Limit to 2 key indicators
+    
+    return result + "."
+# --- add this helper near the top with the other helpers ---
+def clean_llm_output(text: str) -> str:
+    """
+    Remove common wrapper tokens produced by some LLM chains such as:
+      <s> [OUT] ... [/OUT]
+    Keeps the inner content and strips whitespace.
+    """
+    if not text:
+        return text
+
+    t = text.strip()
+
+    # Remove opening wrapper like: <s> [OUT] or <s>[OUT] or [OUT]
+    t = re.sub(r"^\s*(?:<s>\s*)?\[?OUT\]?\s*", "", t, flags=re.IGNORECASE)
+
+    # Remove closing wrapper like: [/OUT] or [/out] or [OUT]
+    t = re.sub(r"\s*(?:\[/?OUT\])\s*$", "", t, flags=re.IGNORECASE)
+
+    # Also remove any stray leading/trailing <s> or </s>
+    t = re.sub(r"^\s*<s>\s*|\s*</s>\s*$", "", t, flags=re.IGNORECASE)
+
+    return t.strip()
 
 
-def summarize_with_llm_from_stats(llm: ChatOpenAI, stats_text: str, user_query: str) -> str:
-    """Generate a concise summary using the LLM."""
+# --- modify summarize_with_llm_from_stats to clean output ---
+def summarize_with_llm_from_stats(llm, stats_text: str, query: str) -> str:
+    """
+    Enhanced prompt template for creating meaningful oceanographic summaries
+    that focus on insights and interpretations rather than raw data repetition.
+    """
     prompt = ChatPromptTemplate.from_messages([
-        ("system", 
-         "You are an oceanographic data expert. Create concise, easy-to-understand summaries for non-experts. "
-         "Focus on trends, patterns, and key insights. Avoid technical jargon and raw numbers where possible. "
-         "Make it conversational and informative."),
+        ("system",
+         "You are an expert oceanographer communicating with the general public. "
+         "Your job is to interpret numeric oceanographic data and explain what it means "
+         "in terms of ocean conditions and patterns.\n\n"
+         "RULES:\n"
+         "• Transform statistics into meaningful insights\n"
+         "• Explain what temperature and salinity ranges indicate about water masses\n"
+         "• Identify if conditions are typical, extreme, or noteworthy\n"
+         "• Use accessible language - avoid technical jargon\n"
+         "• Focus on 'what this tells us' rather than listing numbers\n"
+         "• Keep response to 3-4 sentences maximum\n\n"
+         "CONTEXT GUIDELINES:\n"
+         "• Temperature ranges >10°C suggest mixing of different water masses\n"
+         "• Salinity >35 PSU indicates oceanic water; <34 PSU suggests coastal influence\n"
+         "• Stable salinity (variation <1 PSU) indicates uniform water mass\n"
+         "• Cold temperatures (<5°C) suggest deep water or polar regions\n"
+         "• Warm temperatures (>20°C) indicate surface tropical/subtropical water"),
+
         ("user",
-         "User Query: {query}\n\n"
-         "Computed oceanographic statistics: {stats}\n\n"
-         "Instructions:\n"
-         "- Provide a concise summary in 2-3 sentences\n"
-         "- Focus on trends, ranges, and typical values\n"
-         "- Use accessible language for non-experts\n"
-         "- Do not repeat raw statistical data\n"
-         "- Highlight any interesting patterns or insights")
+         "USER QUESTION: {query}\n\n"
+         "STATISTICAL DATA: {stats}\n\n"
+         "Based on this data, provide a clear interpretation that answers:\n"
+         "1. What do these temperature conditions tell us about the water?\n"
+         "2. What does the salinity pattern indicate?\n"
+         "3. What type of ocean environment or water mass does this represent?\n\n"
+         "Write as if explaining to someone curious about ocean science but not an expert.")
     ])
-    
+
     chain = prompt | llm | StrOutputParser()
-    
-    try:
-        result = chain.invoke({"query": user_query, "stats": stats_text}).strip()
-        # Clean up the result to ensure it's not too verbose
-        if len(result) > 500:  # Truncate if too long
-            sentences = result.split('.')
-            result = '. '.join(sentences[:3]) + '.'
-        return result
-    except Exception as e:
-        print(f"Warning: LLM summarization failed: {e}")
-        # Fallback to simple summary
-        return create_simple_summary_from_stats(stats_text, user_query)
+    raw = chain.invoke({"query": query, "stats": stats_text})
+    return clean_llm_output(raw).strip()
+
+
+# --- modify create_context_summary_with_llm similarly ---
+def create_context_summary_with_llm(llm, context: str, query: str) -> str:
+    """
+    Enhanced context summarization when no numerical stats are available.
+    """
+    prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "You are an oceanographic expert. Analyze the provided oceanographic profile data "
+         "and create a meaningful summary that identifies patterns, trends, and key insights. "
+         "Focus on what the data reveals about ocean conditions rather than listing individual measurements.\n\n"
+         "GUIDELINES:\n"
+         "• Identify geographical patterns (if multiple locations)\n"
+         "• Note temporal trends (if time series data)\n"
+         "• Describe water mass characteristics\n"
+         "• Highlight any unusual or notable conditions\n"
+         "• Keep language accessible to non-experts\n"
+         "• Limit to 3-4 sentences"),
+
+        ("user",
+         "USER QUERY: {query}\n\n"
+         "OCEANOGRAPHIC DATA:\n{context}\n\n"
+         "Provide a concise summary that explains what this data tells us about ocean conditions:")
+    ])
+
+    chain = prompt | llm | StrOutputParser()
+    raw = chain.invoke({"query": query, "context": context})
+    return clean_llm_output(raw).strip()
+
+
 
 
 # ------------------------------------------------------------
-# Main RAG query function
+# Alternative prompt templates for specific use cases
+# ------------------------------------------------------------
+def create_phenomenon_focused_prompt() -> ChatPromptTemplate:
+    """
+    Alternative prompt that focuses on identifying specific oceanographic phenomena.
+    """
+    return ChatPromptTemplate.from_messages([
+        ("system",
+         "You are an oceanographic analyst. Interpret the statistical data to identify "
+         "specific ocean phenomena and water mass characteristics.\n\n"
+         
+         "PHENOMENA TO IDENTIFY:\n"
+         "• Thermoclines (sharp temperature gradients)\n"
+         "• Haloclines (sharp salinity gradients)\n" 
+         "• Water mass boundaries and mixing zones\n"
+         "• Upwelling/downwelling signatures\n"
+         "• Seasonal thermocline development\n"
+         "• Coastal vs oceanic water characteristics\n\n"
+         
+         "RESPONSE FORMAT:\n"
+         "1. Primary water mass type identified\n"
+         "2. Key oceanographic process or phenomenon\n"
+         "3. Confidence level and supporting evidence"),
+        
+        ("user",
+         "Query: {query}\n"
+         "Statistics: {stats}\n\n"
+         "What oceanographic phenomenon does this data represent?")
+    ])
+
+
+def create_enhanced_sql_prompt() -> ChatPromptTemplate:
+    """
+    Enhanced SQL generation prompt with better oceanographic context.
+    """
+    return ChatPromptTemplate.from_messages([
+        ("system", 
+         "You are a SQL expert specializing in oceanographic data analysis. "
+         "Generate efficient PostgreSQL queries for the argo_profiles table.\n\n"
+         
+         "TABLE SCHEMA:\n"
+         "argo_profiles(time, latitude, longitude, pressure, temperature, salinity)\n\n"
+         
+         "QUERY OPTIMIZATION TIPS:\n"
+         "• Use appropriate WHERE clauses for spatial/temporal filtering\n"
+         "• Include statistical functions (AVG, MIN, MAX, STDDEV) for summaries\n"
+         "• Consider pressure ranges for depth analysis\n"
+         "• Use LIMIT for large result sets\n"
+         "• Include ORDER BY for meaningful data organization\n\n"
+         
+         "Return ONLY the SQL query, no explanations."),
+        
+        ("user", 
+         "Context from vector search: {context}\n\n"
+         "User query: {query}\n\n"
+         "Generate a PostgreSQL SELECT query:")
+    ])
+
+
+# ------------------------------------------------------------
+# Main RAG query function (updated)
 # ------------------------------------------------------------
 def rag_query(
     user_query: str,
     chroma_path: str = CHROMA_PATH,
     collection_name: str = COLLECTION_NAME,
-    db_uri: str = DB_URI
+    db_uri: str = DB_URI,
+    use_phenomenon_prompt: bool = False
 ) -> str:
     """
-    Process a natural language query using RAG:
+    Process a natural language query using RAG with enhanced summarization:
     - Retrieve relevant context from ChromaDB
     - Generate SQL via LLM (if available)
     - Execute SQL on PostgreSQL
-    - Always return a summarized response, never raw documents
+    - Always return a summarized response with meaningful insights
     """
     try:
         print(f"DEBUG: Processing query: {user_query}")
@@ -283,18 +445,8 @@ def rag_query(
         df_result = pd.DataFrame()
         if llm:
             try:
-                # Generate SQL
-                sql_prompt = ChatPromptTemplate.from_messages([
-                    ("system", 
-                     "You are a SQL expert for oceanographic data. Generate ONLY a valid PostgreSQL SELECT query. "
-                     "Table: argo_profiles with columns: time, latitude, longitude, pressure, temperature, salinity. "
-                     "Return only the SQL query, no explanations."),
-                    ("user", 
-                     "Context from vector search: {context}\n\n"
-                     "User query: {query}\n\n"
-                     "Generate a SQL SELECT query:")
-                ])
-                
+                # Use enhanced SQL prompt
+                sql_prompt = create_enhanced_sql_prompt()
                 sql_chain = sql_prompt | llm | StrOutputParser()
                 sql_response = sql_chain.invoke({"query": user_query, "context": context}).strip()
                 
@@ -326,37 +478,57 @@ def rag_query(
         if stats_map:  # We have numerical data to summarize
             if llm:
                 print("DEBUG: Creating LLM summary from statistics")
-                return summarize_with_llm_from_stats(llm, stats_text, user_query)
+                if use_phenomenon_prompt:
+                    phenomenon_prompt = create_phenomenon_focused_prompt()
+                    chain = phenomenon_prompt | llm | StrOutputParser()
+                    return chain.invoke({"query": user_query, "stats": stats_text}).strip()
+                else:
+                    return summarize_with_llm_from_stats(llm, stats_text, user_query)
             else:
-                print("DEBUG: Creating simple summary from statistics (no LLM)")
-                return create_simple_summary_from_stats(stats_text, user_query)
+                print("DEBUG: Creating enhanced simple summary from statistics (no LLM)")
+                return create_enhanced_simple_summary_from_stats(stats_text, user_query)
         
         # Step 6: If no numerical stats available, create a basic summary
         if docs:
             if llm:
-                # Use LLM to summarize the document context
+                # Use enhanced context summarization
                 try:
-                    summary_prompt = ChatPromptTemplate.from_messages([
-                        ("system", 
-                         "Summarize this oceanographic data in 2-3 clear sentences for non-experts. "
-                         "Focus on key insights and patterns, avoid listing raw data."),
-                        ("user", 
-                         "User asked: {query}\n\n"
-                         "Available data: {context}\n\n"
-                         "Provide a concise summary:")
-                    ])
-                    summary_chain = summary_prompt | llm | StrOutputParser()
-                    return summary_chain.invoke({"query": user_query, "context": context}).strip()
+                    return create_context_summary_with_llm(llm, context, user_query)
                 except Exception as e:
                     print(f"WARNING: LLM context summarization failed: {e}")
                     # Fall through to basic response
             
-            # Basic response without LLM
+            # Enhanced basic response without LLM
             num_profiles = len(docs)
-            return f"Found {num_profiles} relevant oceanographic profiles. The data includes various temperature and salinity measurements across different locations and times. For detailed analysis, please refine your query with specific parameters like location, time period, or measurement ranges."
+            # Try to extract some basic info from docs for better response
+            locations = set()
+            time_periods = set()
+            
+            for doc in docs:
+                # Extract coordinates
+                coord_match = re.search(r"([-+]?\d*\.?\d+)\s*lat,\s*([-+]?\d*\.?\d+)\s*lon", doc)
+                if coord_match:
+                    lat, lon = float(coord_match.group(1)), float(coord_match.group(2))
+                    # Classify region roughly
+                    if abs(lat) < 30:
+                        locations.add("tropical")
+                    elif abs(lat) < 60:
+                        locations.add("temperate")
+                    else:
+                        locations.add("polar")
+                
+                # Extract year if possible
+                year_match = re.search(r"20\d{2}", doc)
+                if year_match:
+                    time_periods.add(year_match.group())
+            
+            region_desc = ", ".join(locations) if locations else "various"
+            time_desc = f" from {min(time_periods)}-{max(time_periods)}" if len(time_periods) > 1 else f" from {list(time_periods)[0]}" if time_periods else ""
+            
+            return f"Found {num_profiles} oceanographic profiles from {region_desc} regions{time_desc}. The data includes temperature and salinity measurements at various depths. For detailed analysis with specific statistics, please refine your query with parameters like location coordinates, depth ranges, or time periods."
         
         # Final fallback
-        return "No relevant oceanographic data found for your query. Please try rephrasing or specifying location, time period, or measurement parameters."
+        return "No relevant oceanographic data found for your query. Please try rephrasing or specifying location (lat/lon), time period, or measurement parameters (temperature/salinity ranges)."
 
     except Exception as e:
         print(f"ERROR in rag_query: {e}")
@@ -365,41 +537,62 @@ def rag_query(
 
 
 # ------------------------------------------------------------
-# CLI interactive mode
+# Enhanced CLI interactive mode
 # ------------------------------------------------------------
 def main():
+    """
+    Enhanced main function with better user interaction.
+    """
     try:
+        print("🌊 Setting up oceanographic data system...")
         inserted = populate_chroma_if_empty(PARQUET_PATH, CHROMA_PATH, COLLECTION_NAME)
         if inserted:
-            print(f"Populated {inserted} documents into '{COLLECTION_NAME}'.")
+            print(f"✅ Populated {inserted} documents into '{COLLECTION_NAME}'.")
         else:
-            print(f"ChromaDB already contains data.")
+            print(f"✅ ChromaDB already contains data.")
     except Exception as e:
-        print(f"ERROR: Failed to set up ChromaDB: {e}")
+        print(f"❌ ERROR: Failed to set up ChromaDB: {e}")
         return
 
-    print("\n=== Interactive RAG CLI ===")
-    print("Ask questions about oceanographic data. Type 'quit' to exit.")
+    print("\n🔬 === Interactive Oceanographic RAG System ===")
+    print("Ask questions about ocean temperature, salinity, and water masses.")
+    print("Example queries:")
+    print("  • 'What are temperatures like in the tropical Pacific?'")
+    print("  • 'Show me salinity data from the Atlantic Ocean'")
+    print("  • 'Find cold water masses below 5 degrees'")
+    print("\nCommands: 'quit' to exit, 'help' for more examples")
+    print("-" * 60)
     
     while True:
         try:
-            query = input("\n> ").strip()
+            query = input("\n🌊 Query > ").strip()
+            
             if query.lower() in ["quit", "exit", "q"]:
                 break
-            if not query:
+            elif query.lower() == "help":
+                print("\n📚 Example Queries:")
+                print("  • Geographic: 'ocean data near 40°N 30°W'")
+                print("  • Temperature: 'warm water above 20 degrees'")
+                print("  • Salinity: 'high salinity regions'")
+                print("  • Depth: 'surface water conditions'")
+                print("  • Comparative: 'temperature differences in Atlantic vs Pacific'")
+                print("  • Temporal: 'seasonal temperature changes'")
+                continue
+            elif not query:
                 continue
                 
-            print("\nProcessing...")
+            print("\n🔍 Processing...")
             response = rag_query(query)
-            print(f"\nResponse:\n{response}\n")
+            print(f"\n📊 Analysis:\n{response}\n")
+            print("-" * 40)
             
         except KeyboardInterrupt:
-            print("\n\nExiting...")
+            print("\n\n👋 Exiting...")
             break
         except Exception as e:
-            print(f"Error processing query: {e}")
+            print(f"❌ Error processing query: {e}")
 
-    print("✅ Interactive session ended.")
+    print("✅ Session ended. Thank you for exploring oceanographic data! 🌊")
 
 
 if __name__ == "__main__":
