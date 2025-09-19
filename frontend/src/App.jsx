@@ -1,3 +1,4 @@
+
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import AuthPage from "./Pages/AuthPage";
 import Dashboard from "./components/Dashboard";
@@ -5,6 +6,7 @@ import Profile from "./Pages/Profile";
 import History from "./Pages/History";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/Authcontext";
+import FloatChat from "./components/FloatChat";
 
 function App() {
   return (
@@ -20,6 +22,8 @@ function App() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/history" element={<History />} />
           </Route>
+          {/* FloatChat route (public) */}
+          <Route path="/floatchat" element={<FloatChat />} />
         </Routes>
       </Router>
     </AuthProvider>
