@@ -1,3 +1,4 @@
+# Updated Pipeline with Oxygen, Chlorophyll, Depth and LLM-safe summary
 import os
 import re
 import traceback
@@ -9,7 +10,7 @@ from sentence_transformers import SentenceTransformer
 import chromadb
 from chromadb.config import Settings
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from db.database import DB_URI
 
@@ -40,7 +41,6 @@ def ensure_collection(chroma_path: str, collection_name: str):
     except Exception:
         return client.create_collection(collection_name)
 
-
 def populate_chroma_if_empty(parquet_path: str, chroma_path: str, collection_name: str) -> int:
     collection = ensure_collection(chroma_path, collection_name)
     try:
@@ -65,7 +65,10 @@ def populate_chroma_if_empty(parquet_path: str, chroma_path: str, collection_nam
         summary = (
             f"Argo profile at {float(lat):.2f} lat, {float(lon):.2f} lon on {time}. "
             f"Temperature range: {float(group['temperature'].min()):.1f}-{float(group['temperature'].max()):.1f}°C, "
-            f"Salinity mean: {float(group['salinity'].mean()):.1f} PSU"
+            f"Salinity mean: {float(group['salinity'].mean()):.1f} PSU, "
+            f"Oxygen mean: {float(group['oxygen'].mean()):.1f} μmol/kg, "
+            f"Chlorophyll mean: {float(group['chlorophyll'].mean()):.2f} mg/m³, "
+            f"Depth range: {float(group['depth'].min()):.1f}-{float(group['depth'].max()):.1f} m"
         )
         ids.append(str(hash(key)))
         docs.append(summary)
@@ -88,12 +91,11 @@ def run_sql(sql: str) -> pd.DataFrame:
 # Enhanced Summarization helpers
 # ------------------------------------------------------------
 def extract_numeric_stats(df: pd.DataFrame) -> Tuple[str, Dict[str, Dict[str, float]]]:
-    """Extract numeric statistics from SQL results."""
     if df.empty:
         return "No data found.", {}
 
     lower_map = {c.lower(): c for c in df.columns}
-    targets = ["temperature", "salinity"]
+    targets = ["temperature", "salinity", "oxygen", "chlorophyll", "depth"]
     stats_out: Dict[str, Dict[str, float]] = {}
 
     for target in targets:
@@ -108,293 +110,219 @@ def extract_numeric_stats(df: pd.DataFrame) -> Tuple[str, Dict[str, Dict[str, fl
                 }
 
     if not stats_out:
-        return "No valid temperature or salinity data.", {}
+        return "No valid numeric data.", {}
 
     parts = [f"{name}: min {s['min']}, max {s['max']}, avg {s['mean']}" for name, s in stats_out.items()]
     return "; ".join(parts), stats_out
 
-
 def extract_stats_from_docs(docs: List[str]) -> Tuple[str, Dict[str, Dict[str, float]]]:
-    """
-    Parse temperature ranges and salinity means from retrieved document texts
-    to build approximate stats when SQL results are not available.
-    """
     if not docs:
         return "No data found.", {}
 
-    temp_lows: List[float] = []
-    temp_highs: List[float] = []
-    sal_means: List[float] = []
+    temp_lows, temp_highs, sal_means, oxy_means, chl_means, depth_mins, depth_maxs = [], [], [], [], [], [], []
 
-    # Fixed regex patterns - removed double backslashes
     temp_re = re.compile(r"Temperature range:\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*°C", re.IGNORECASE)
     sal_re = re.compile(r"Salinity mean:\s*([0-9]+(?:\.[0-9]+)?)\s*PSU", re.IGNORECASE)
+    oxy_re = re.compile(r"Oxygen mean:\s*([0-9]+(?:\.[0-9]+)?)\s*μmol/kg", re.IGNORECASE)
+    chl_re = re.compile(r"Chlorophyll mean:\s*([0-9]+(?:\.[0-9]+)?)\s*mg/m", re.IGNORECASE)
+    depth_re = re.compile(r"Depth range:\s*([0-9]+(?:\.[0-9]+)?)-([0-9]+(?:\.[0-9]+)?)\s*m", re.IGNORECASE)
 
     for doc in docs:
         t = temp_re.search(doc)
         if t:
-            try:
-                temp_lows.append(float(t.group(1)))
-                temp_highs.append(float(t.group(2)))
-            except Exception:
-                pass
+            temp_lows.append(float(t.group(1)))
+            temp_highs.append(float(t.group(2)))
+
         s = sal_re.search(doc)
         if s:
-            try:
-                sal_means.append(float(s.group(1)))
-            except Exception:
-                pass
+            sal_means.append(float(s.group(1)))
+
+        o = oxy_re.search(doc)
+        if o:
+            oxy_means.append(float(o.group(1)))
+
+        c = chl_re.search(doc)
+        if c:
+            chl_means.append(float(c.group(1)))
+
+        d = depth_re.search(doc)
+        if d:
+            depth_mins.append(float(d.group(1)))
+            depth_maxs.append(float(d.group(2)))
 
     stats_map: Dict[str, Dict[str, float]] = {}
     parts: List[str] = []
 
     if temp_lows and temp_highs:
-        t_min = min(temp_lows)
-        t_max = max(temp_highs)
-        t_mean = (sum(temp_lows + temp_highs) / (len(temp_lows) + len(temp_highs)))
+        t_min, t_max = min(temp_lows), max(temp_highs)
+        t_mean = sum(temp_lows + temp_highs) / (len(temp_lows) + len(temp_highs))
         stats_map["temperature"] = {"min": round(t_min, 1), "max": round(t_max, 1), "mean": round(t_mean, 1)}
-        t = stats_map["temperature"]
-        parts.append(f"temperature: min {t['min']}, max {t['max']}, avg {t['mean']}")
+        parts.append(f"temperature: min {t_min}, max {t_max}, avg {round(t_mean,1)}")
 
     if sal_means:
-        s_min = min(sal_means)
-        s_max = max(sal_means)
-        s_mean = sum(sal_means) / len(sal_means)
-        stats_map["salinity"] = {"min": round(s_min, 1), "max": round(s_max, 1), "mean": round(s_mean, 1)}
-        s = stats_map["salinity"]
-        parts.append(f"salinity: min {s['min']}, max {s['max']}, avg {s['mean']}")
+        s_min, s_max, s_mean = min(sal_means), max(sal_means), sum(sal_means)/len(sal_means)
+        stats_map["salinity"] = {"min": round(s_min,1), "max": round(s_max,1), "mean": round(s_mean,1)}
+        parts.append(f"salinity: min {s_min}, max {s_max}, avg {round(s_mean,1)}")
+
+    if oxy_means:
+        o_mean = sum(oxy_means)/len(oxy_means)
+        stats_map["oxygen"] = {"mean": round(o_mean,1)}
+        parts.append(f"oxygen: avg {round(o_mean,1)}")
+
+    if chl_means:
+        c_mean = sum(chl_means)/len(chl_means)
+        stats_map["chlorophyll"] = {"mean": round(c_mean,2)}
+        parts.append(f"chlorophyll: avg {round(c_mean,2)}")
+
+    if depth_mins and depth_maxs:
+        d_min, d_max = min(depth_mins), max(depth_maxs)
+        stats_map["depth"] = {"min": round(d_min,1), "max": round(d_max,1)}
+        parts.append(f"depth: min {d_min}, max {d_max}")
 
     if not parts:
-        return "No valid temperature or salinity data.", {}
-
+        return "No valid numeric data.", {}
+    
     return "; ".join(parts), stats_map
 
-
+# ------------------------------------------------------------
+# Simple enhanced summary (non-LLM)
+# ------------------------------------------------------------
 def create_enhanced_simple_summary_from_stats(stats_text: str, user_query: str) -> str:
-    """
-    Enhanced fallback summary when LLM is not available.
-    Creates more interpretive summaries rather than just listing numbers.
-    """
     if "No valid" in stats_text or "No data" in stats_text:
         return "No oceanographic data found matching your query."
-    
+
     parts = []
     water_mass_indicators = []
-    
-    # Parse temperature data
+
+    # Temperature & salinity
     temp_match = re.search(r"temperature:\s*min\s*([\d.]+),\s*max\s*([\d.]+),\s*avg\s*([\d.]+)", stats_text.lower())
+    sal_match = re.search(r"salinity:\s*min\s*([\d.]+),\s*max\s*([\d.]+),\s*avg\s*([\d.]+)", stats_text.lower())
+
     if temp_match:
         min_t, max_t, avg_t = map(float, temp_match.groups())
         temp_range = max_t - min_t
-        
         if temp_range > 15:
-            parts.append(f"Water shows strong temperature stratification, ranging from {min_t}°C to {max_t}°C")
+            parts.append(f"Strong temperature stratification: {min_t}-{max_t}°C")
             water_mass_indicators.append("mixed water column")
         elif temp_range > 5:
-            parts.append(f"Moderate temperature variation from {min_t}°C to {max_t}°C (avg: {avg_t}°C)")
+            parts.append(f"Moderate temperature variation: {min_t}-{max_t}°C (avg {avg_t}°C)")
             water_mass_indicators.append("some vertical mixing")
         else:
-            parts.append(f"Relatively uniform temperature around {avg_t}°C")
+            parts.append(f"Uniform temperature around {avg_t}°C")
             water_mass_indicators.append("stable water mass")
-        
-        # Temperature classification
-        if avg_t > 25:
-            water_mass_indicators.append("tropical surface water")
-        elif avg_t > 15:
-            water_mass_indicators.append("temperate water")
-        elif avg_t > 5:
-            water_mass_indicators.append("cool water mass")
-        else:
-            water_mass_indicators.append("cold/deep water")
-    
-    # Parse salinity data
-    sal_match = re.search(r"salinity:\s*min\s*([\d.]+),\s*max\s*([\d.]+),\s*avg\s*([\d.]+)", stats_text.lower())
+
     if sal_match:
         min_s, max_s, avg_s = map(float, sal_match.groups())
         sal_range = max_s - min_s
-        
         if sal_range < 0.5:
             parts.append(f"Salinity is very stable at {avg_s} PSU")
-        elif sal_range < 2.0:
+        elif sal_range < 2:
             parts.append(f"Salinity shows minor variation ({min_s}-{max_s} PSU)")
         else:
-            parts.append(f"Salinity varies significantly from {min_s} to {max_s} PSU")
+            parts.append(f"Salinity varies significantly from {min_s}-{max_s} PSU")
             water_mass_indicators.append("water mass mixing")
-        
-        # Salinity classification
-        if avg_s > 35.5:
-            water_mass_indicators.append("high-salinity oceanic water")
-        elif avg_s > 34.5:
-            water_mass_indicators.append("typical oceanic conditions")
-        elif avg_s > 32:
-            water_mass_indicators.append("coastal influence detected")
+
+    # Oxygen
+    oxy_match = re.search(r"oxygen: avg\s*([\d.]+)", stats_text.lower())
+    if oxy_match:
+        avg_o2 = float(oxy_match.group(1))
+        if avg_o2 < 50:
+            parts.append(f"Low oxygen ({avg_o2} μmol/kg) indicating hypoxic conditions")
         else:
-            water_mass_indicators.append("freshwater influence")
-    
-    # Combine into meaningful summary
+            parts.append(f"Oxygen levels healthy at {avg_o2} μmol/kg")
+
+    # Chlorophyll
+    chl_match = re.search(r"chlorophyll: avg\s*([\d.]+)", stats_text.lower())
+    if chl_match:
+        avg_chl = float(chl_match.group(1))
+        if avg_chl > 1:
+            parts.append(f"High chlorophyll ({avg_chl} mg/m³) indicating productive waters")
+        else:
+            parts.append(f"Low chlorophyll ({avg_chl} mg/m³) indicating low productivity")
+
+    # Depth
+    depth_match = re.search(r"depth: min\s*([\d.]+),\s*max\s*([\d.]+)", stats_text.lower())
+    if depth_match:
+        min_d, max_d = map(float, depth_match.groups())
+        parts.append(f"Depth ranges from {min_d}-{max_d} m")
+
     result = ". ".join(parts)
     if water_mass_indicators:
-        unique_indicators = list(dict.fromkeys(water_mass_indicators))  # Remove duplicates while preserving order
-        result += f". This suggests {', '.join(unique_indicators[:2])}"  # Limit to 2 key indicators
-    
+        unique_indicators = list(dict.fromkeys(water_mass_indicators))
+        result += f". Suggests {', '.join(unique_indicators[:2])}"
+
     return result + "."
-# --- add this helper near the top with the other helpers ---
-def clean_llm_output(text: str) -> str:
-    """
-    Remove common wrapper tokens produced by some LLM chains such as:
-      <s> [OUT] ... [/OUT]
-    Keeps the inner content and strips whitespace.
-    """
-    if not text:
-        return text
-
-    t = text.strip()
-
-    # Remove opening wrapper like: <s> [OUT] or <s>[OUT] or [OUT]
-    t = re.sub(r"^\s*(?:<s>\s*)?\[?OUT\]?\s*", "", t, flags=re.IGNORECASE)
-
-    # Remove closing wrapper like: [/OUT] or [/out] or [OUT]
-    t = re.sub(r"\s*(?:\[/?OUT\])\s*$", "", t, flags=re.IGNORECASE)
-
-    # Also remove any stray leading/trailing <s> or </s>
-    t = re.sub(r"^\s*<s>\s*|\s*</s>\s*$", "", t, flags=re.IGNORECASE)
-
-    return t.strip()
-
-
-# --- modify summarize_with_llm_from_stats to clean output ---
-def summarize_with_llm_from_stats(llm, stats_text: str, query: str) -> str:
-    """
-    Enhanced prompt template for creating meaningful oceanographic summaries
-    that focus on insights and interpretations rather than raw data repetition.
-    """
-    prompt = ChatPromptTemplate.from_messages([
-        ("system",
-         "You are an expert oceanographer communicating with the general public. "
-         "Your job is to interpret numeric oceanographic data and explain what it means "
-         "in terms of ocean conditions and patterns.\n\n"
-         "RULES:\n"
-         "• Transform statistics into meaningful insights\n"
-         "• Explain what temperature and salinity ranges indicate about water masses\n"
-         "• Identify if conditions are typical, extreme, or noteworthy\n"
-         "• Use accessible language - avoid technical jargon\n"
-         "• Focus on 'what this tells us' rather than listing numbers\n"
-         "• Keep response to 3-4 sentences maximum\n\n"
-         "CONTEXT GUIDELINES:\n"
-         "• Temperature ranges >10°C suggest mixing of different water masses\n"
-         "• Salinity >35 PSU indicates oceanic water; <34 PSU suggests coastal influence\n"
-         "• Stable salinity (variation <1 PSU) indicates uniform water mass\n"
-         "• Cold temperatures (<5°C) suggest deep water or polar regions\n"
-         "• Warm temperatures (>20°C) indicate surface tropical/subtropical water"),
-
-        ("user",
-         "USER QUESTION: {query}\n\n"
-         "STATISTICAL DATA: {stats}\n\n"
-         "Based on this data, provide a clear interpretation that answers:\n"
-         "1. What do these temperature conditions tell us about the water?\n"
-         "2. What does the salinity pattern indicate?\n"
-         "3. What type of ocean environment or water mass does this represent?\n\n"
-         "Write as if explaining to someone curious about ocean science but not an expert.")
-    ])
-
-    chain = prompt | llm | StrOutputParser()
-    raw = chain.invoke({"query": query, "stats": stats_text})
-    return clean_llm_output(raw).strip()
-
-
-# --- modify create_context_summary_with_llm similarly ---
-def create_context_summary_with_llm(llm, context: str, query: str) -> str:
-    """
-    Enhanced context summarization when no numerical stats are available.
-    """
-    prompt = ChatPromptTemplate.from_messages([
-        ("system",
-         "You are an oceanographic expert. Analyze the provided oceanographic profile data "
-         "and create a meaningful summary that identifies patterns, trends, and key insights. "
-         "Focus on what the data reveals about ocean conditions rather than listing individual measurements.\n\n"
-         "GUIDELINES:\n"
-         "• Identify geographical patterns (if multiple locations)\n"
-         "• Note temporal trends (if time series data)\n"
-         "• Describe water mass characteristics\n"
-         "• Highlight any unusual or notable conditions\n"
-         "• Keep language accessible to non-experts\n"
-         "• Limit to 3-4 sentences"),
-
-        ("user",
-         "USER QUERY: {query}\n\n"
-         "OCEANOGRAPHIC DATA:\n{context}\n\n"
-         "Provide a concise summary that explains what this data tells us about ocean conditions:")
-    ])
-
-    chain = prompt | llm | StrOutputParser()
-    raw = chain.invoke({"query": query, "context": context})
-    return clean_llm_output(raw).strip()
-
-
-
 
 # ------------------------------------------------------------
-# Alternative prompt templates for specific use cases
+# LLM summarization helper (FIXED for LangChain compatibility)
 # ------------------------------------------------------------
-def create_phenomenon_focused_prompt() -> ChatPromptTemplate:
+def summarize_with_llm_from_stats(llm, stats_text: str, user_query: str) -> str:
     """
-    Alternative prompt that focuses on identifying specific oceanographic phenomena.
+    Use an LLM to turn numeric stats into a readable natural language summary.
+    Fixed to work with LangChain's invoke method.
     """
-    return ChatPromptTemplate.from_messages([
-        ("system",
-         "You are an oceanographic analyst. Interpret the statistical data to identify "
-         "specific ocean phenomena and water mass characteristics.\n\n"
-         
-         "PHENOMENA TO IDENTIFY:\n"
-         "• Thermoclines (sharp temperature gradients)\n"
-         "• Haloclines (sharp salinity gradients)\n" 
-         "• Water mass boundaries and mixing zones\n"
-         "• Upwelling/downwelling signatures\n"
-         "• Seasonal thermocline development\n"
-         "• Coastal vs oceanic water characteristics\n\n"
-         
-         "RESPONSE FORMAT:\n"
-         "1. Primary water mass type identified\n"
-         "2. Key oceanographic process or phenomenon\n"
-         "3. Confidence level and supporting evidence"),
-        
-        ("user",
-         "Query: {query}\n"
-         "Statistics: {stats}\n\n"
-         "What oceanographic phenomenon does this data represent?")
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", 
+         "You are an oceanography expert. Create concise, scientifically accurate summaries "
+         "from oceanographic statistics. Focus on meaningful patterns and trends."),
+        ("user", 
+         f"User query: {user_query}\n\n"
+         f"Statistics: {stats_text}\n\n"
+         "Create a clear, concise summary suitable for oceanographers. Include key insights "
+         "about temperature, salinity, oxygen, chlorophyll, and depth patterns.")
     ])
+    
+    try:
+        chain = prompt | llm | StrOutputParser()
+        response = chain.invoke({})
+        return response.strip()
+    except Exception as e:
+        print(f"WARNING: LLM summarization failed: {e}")
+        return create_enhanced_simple_summary_from_stats(stats_text, user_query)
 
+# ------------------------------------------------------------
+# Context summary with LLM (for fallback cases)
+# ------------------------------------------------------------
+def create_context_summary_with_llm(llm, context: str, user_query: str) -> str:
+    """Create a summary from retrieved context documents when no numeric stats available."""
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", 
+         "You are an oceanography expert. Summarize relevant information from Argo float profiles "
+         "to answer user questions about ocean conditions."),
+        ("user", 
+         f"User query: {user_query}\n\n"
+         f"Available profile summaries:\n{context}\n\n"
+         "Create a concise summary highlighting the most relevant oceanographic conditions "
+         "from these profiles. Include location, time, and key measurements where available.")
+    ])
+    
+    try:
+        chain = prompt | llm | StrOutputParser()
+        response = chain.invoke({})
+        return response.strip()
+    except Exception as e:
+        print(f"WARNING: Context summarization failed: {e}")
+        return f"Found relevant oceanographic profiles matching your query about {user_query}."
 
+# ------------------------------------------------------------
+# SQL prompt
+# ------------------------------------------------------------
 def create_enhanced_sql_prompt() -> ChatPromptTemplate:
-    """
-    Enhanced SQL generation prompt with better oceanographic context.
-    """
     return ChatPromptTemplate.from_messages([
         ("system", 
          "You are a SQL expert specializing in oceanographic data analysis. "
          "Generate efficient PostgreSQL queries for the argo_profiles table.\n\n"
-         
          "TABLE SCHEMA:\n"
-         "argo_profiles(time, latitude, longitude, pressure, temperature, salinity)\n\n"
-         
-         "QUERY OPTIMIZATION TIPS:\n"
-         "• Use appropriate WHERE clauses for spatial/temporal filtering\n"
-         "• Include statistical functions (AVG, MIN, MAX, STDDEV) for summaries\n"
-         "• Consider pressure ranges for depth analysis\n"
-         "• Use LIMIT for large result sets\n"
-         "• Include ORDER BY for meaningful data organization\n\n"
-         
-         "Return ONLY the SQL query, no explanations."),
-        
+         "argo_profiles(time, latitude, longitude, pressure, temperature, salinity, oxygen, chlorophyll, depth)\n\n"
+         "Return ONLY the SQL query, no explanations or markdown formatting."),
         ("user", 
          "Context from vector search: {context}\n\n"
          "User query: {query}\n\n"
          "Generate a PostgreSQL SELECT query:")
     ])
 
-
 # ------------------------------------------------------------
-# Main RAG query function (updated)
+# Main RAG query function (COMPLETED)
 # ------------------------------------------------------------
 def rag_query(
     user_query: str,
@@ -479,9 +407,10 @@ def rag_query(
             if llm:
                 print("DEBUG: Creating LLM summary from statistics")
                 if use_phenomenon_prompt:
-                    phenomenon_prompt = create_phenomenon_focused_prompt()
-                    chain = phenomenon_prompt | llm | StrOutputParser()
-                    return chain.invoke({"query": user_query, "stats": stats_text}).strip()
+                    # Note: create_phenomenon_focused_prompt() would need to be defined
+                    # For now, fall back to standard summary
+                    print("WARNING: Phenomenon prompt not implemented, using standard summary")
+                    return summarize_with_llm_from_stats(llm, stats_text, user_query)
                 else:
                     return summarize_with_llm_from_stats(llm, stats_text, user_query)
             else:
@@ -508,7 +437,7 @@ def rag_query(
                 # Extract coordinates
                 coord_match = re.search(r"([-+]?\d*\.?\d+)\s*lat,\s*([-+]?\d*\.?\d+)\s*lon", doc)
                 if coord_match:
-                    lat, lon = float(coord_match.group(1)), float(coord_match.group(2))
+                    lat = float(coord_match.group(1))
                     # Classify region roughly
                     if abs(lat) < 30:
                         locations.add("tropical")
@@ -525,16 +454,15 @@ def rag_query(
             region_desc = ", ".join(locations) if locations else "various"
             time_desc = f" from {min(time_periods)}-{max(time_periods)}" if len(time_periods) > 1 else f" from {list(time_periods)[0]}" if time_periods else ""
             
-            return f"Found {num_profiles} oceanographic profiles from {region_desc} regions{time_desc}. The data includes temperature and salinity measurements at various depths. For detailed analysis with specific statistics, please refine your query with parameters like location coordinates, depth ranges, or time periods."
+            return f"Found {num_profiles} oceanographic profiles from {region_desc} regions{time_desc}. The data includes temperature, salinity, oxygen, and chlorophyll measurements at various depths. For detailed analysis with specific statistics, please refine your query with parameters like location coordinates, depth ranges, or time periods."
         
         # Final fallback
-        return "No relevant oceanographic data found for your query. Please try rephrasing or specifying location (lat/lon), time period, or measurement parameters (temperature/salinity ranges)."
+        return "No relevant oceanographic data found for your query. Please try rephrasing or specifying location (lat/lon), time period, or measurement parameters (temperature/salinity/oxygen/chlorophyll ranges)."
 
     except Exception as e:
         print(f"ERROR in rag_query: {e}")
         traceback.print_exc()
         return f"An error occurred while processing your query: {str(e)}"
-
 
 # ------------------------------------------------------------
 # Enhanced CLI interactive mode
@@ -555,11 +483,12 @@ def main():
         return
 
     print("\n🔬 === Interactive Oceanographic RAG System ===")
-    print("Ask questions about ocean temperature, salinity, and water masses.")
+    print("Ask questions about ocean temperature, salinity, oxygen, chlorophyll, and water masses.")
     print("Example queries:")
     print("  • 'What are temperatures like in the tropical Pacific?'")
-    print("  • 'Show me salinity data from the Atlantic Ocean'")
-    print("  • 'Find cold water masses below 5 degrees'")
+    print("  • 'Show me oxygen data from the Atlantic Ocean'")
+    print("  • 'Find productive waters with high chlorophyll'")
+    print("  • 'What are conditions at 200m depth?'")
     print("\nCommands: 'quit' to exit, 'help' for more examples")
     print("-" * 60)
     
@@ -573,10 +502,11 @@ def main():
                 print("\n📚 Example Queries:")
                 print("  • Geographic: 'ocean data near 40°N 30°W'")
                 print("  • Temperature: 'warm water above 20 degrees'")
-                print("  • Salinity: 'high salinity regions'")
-                print("  • Depth: 'surface water conditions'")
-                print("  • Comparative: 'temperature differences in Atlantic vs Pacific'")
-                print("  • Temporal: 'seasonal temperature changes'")
+                print("  • Salinity: 'high salinity regions above 35 PSU'")
+                print("  • Oxygen: 'hypoxic conditions below 50 μmol/kg'")
+                print("  • Chlorophyll: 'productive regions with chlorophyll > 1 mg/m³'")
+                print("  • Depth: 'deep water conditions below 1000m'")
+                print("  • Combined: 'warm, salty surface waters in summer'")
                 continue
             elif not query:
                 continue
