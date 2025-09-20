@@ -24,8 +24,21 @@ const FloatMap = ({ data }) => {
   const defaultCenter = [-20, 80];
   const defaultZoom = 4;
 
+
   useEffect(() => {
-    if (data && (data.floats || data.trajectories)) setMapData(data);
+    // Accepts both old and new backend formats
+    if (data && typeof data === 'object') {
+      // New backend: { float_locations: [...] }
+      if (data.float_locations) {
+        setMapData({ floats: data.float_locations });
+      } else if (data.floats || data.trajectories) {
+        setMapData(data);
+      } else {
+        setMapData(null);
+      }
+    } else {
+      setMapData(null);
+    }
   }, [data]);
 
   useEffect(() => {

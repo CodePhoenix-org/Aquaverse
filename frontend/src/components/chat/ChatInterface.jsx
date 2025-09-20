@@ -25,6 +25,8 @@ const ChatInterface = ({ onDataReceived }) => {
   }, [messages]);
 
   const handleSendMessage = async () => {
+  // Debug: log input value
+  console.log('Sending query:', inputValue);
     if (!inputValue.trim() || isLoading) return;
 
     const userMessage = {
@@ -43,19 +45,41 @@ const ChatInterface = ({ onDataReceived }) => {
       const response = await axios.post('http://127.0.0.1:8000/chat', {
         query: inputValue
       });
+      // Debug: log full response
+      console.log('Full response:', response);
+      console.log('Response data:', response.data);
+      console.log('Type of response data:', typeof response.data);
+
+      // Extract the message properly
+      let messageContent = '';
+      let responseData = null;
+
+      // Handle both array and object responses
+      if (Array.isArray(response.data)) {
+        // This is the array format you're currently getting
+        messageContent = response.data[0] || '⚠️ No response';
+        responseData = response.data[1] || null;
+      } else if (typeof response.data === 'object') {
+        // This is the proper object format
+        messageContent = response.data.message || response.data.answer || '⚠️ No response';
+        responseData = response.data.data || null;
+      } else {
+        // Fallback for unexpected formats
+        messageContent = String(response.data);
+      }
 
       const botMessage = {
         id: Date.now() + 1,
         type: 'bot',
-        content: response.data.message || response.data.answer || '⚠️ No response',
-        data: response.data.data || null,
+        content: messageContent,
+        data: responseData,
         timestamp: new Date(),
       };
 
       setMessages((prev) => [...prev, botMessage]);
 
-      if (response.data.data) {
-        onDataReceived(response.data.data);
+      if (responseData) {
+        onDataReceived(responseData);
       }
     } catch (error) {
       console.error('API Error:', error);
@@ -97,13 +121,17 @@ const ChatInterface = ({ onDataReceived }) => {
             }`}
           >
             <div
-              className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                message.type === 'user'
+              className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${message.type === 'user'
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-100 text-gray-800'
-              }`}
+                }`}
             >
-              <p className="text-sm">{message.content}</p>
+              {/* <p className="text-sm">{message.content}</p> */}
+              <p className="text-sm">
+                {typeof message.content === 'string'
+                  ? message.content
+                  : JSON.stringify(message.content)}
+              </p>
               <p className="text-xs mt-1 opacity-70">
                 {message.timestamp.toLocaleTimeString()}
               </p>
@@ -149,12 +177,12 @@ const ChatInterface = ({ onDataReceived }) => {
             disabled={!inputValue.trim() || isLoading}
             className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <PaperAirplaneIcon className="w-5 h-5" />
+            <PaperAirplaneIcon className="h-5 w-5" />
           </button>
         </div>
       </div>
     </div>
   );
-};
+}
 
 export default ChatInterface;

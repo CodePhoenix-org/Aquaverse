@@ -132,8 +132,24 @@ const ProfileComparison = ({ data }) => {
     return false;
   };
 
+
   // Function to get comparison data with proper validation
   const getComparisonData = () => {
+    // New backend: { temperature_profile: {...}, salinity_profile: {...} }
+    if (data && typeof data === 'object' && (data.temperature_profile || data.salinity_profile)) {
+      // Convert to comparison format if possible
+      const comparisonData = {};
+      if (data.temperature_profile) {
+        comparisonData.temperature = { temp1: { ...data.temperature_profile, name: 'Profile 1', color: '#ff6b6b' } };
+      }
+      if (data.salinity_profile) {
+        comparisonData.salinity = { sal1: { ...data.salinity_profile, name: 'Profile 1', color: '#4ecdc4' } };
+      }
+      if (Object.keys(comparisonData).length > 0) {
+        return comparisonData;
+      }
+    }
+
     // First check for explicit comparison data
     if (data && data.profileComparisons && isValidComparisonData(data.profileComparisons)) {
       console.log('ProfileComparison: Using data.profileComparisons');

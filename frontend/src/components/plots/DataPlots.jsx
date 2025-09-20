@@ -1,13 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import Plot from 'react-plotly.js';
 
+
 const DataPlots = ({ data }) => {
   const [plotData, setPlotData] = useState(null);
   const [activeParameter, setActiveParameter] = useState('temperature');
 
   useEffect(() => {
-    if (data && data.profiles) {
-      setPlotData(data);
+    // Accepts both old and new backend formats
+    if (data && typeof data === 'object') {
+      // New backend: { temperature_profile: {...}, salinity_profile: {...} }
+      if (data.temperature_profile || data.salinity_profile) {
+        setPlotData({
+          temperature: data.temperature_profile || null,
+          salinity: data.salinity_profile || null
+        });
+      } else if (data.profiles) {
+        setPlotData(data);
+      } else {
+        setPlotData(null);
+      }
+    } else {
+      setPlotData(null);
     }
   }, [data]);
 
@@ -36,7 +50,16 @@ const DataPlots = ({ data }) => {
     }
   };
 
+
   const getCurrentData = () => {
+    // New backend: plotData.temperature or plotData.salinity
+    if (plotData && plotData[activeParameter]) {
+      return {
+        ...sampleData[activeParameter],
+        ...plotData[activeParameter]
+      };
+    }
+    // Old backend: plotData.profiles[activeParameter]
     if (plotData && plotData.profiles && plotData.profiles[activeParameter]) {
       return plotData.profiles[activeParameter];
     }

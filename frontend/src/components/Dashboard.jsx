@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { transformApiData } from "../utils/dataTransformers";
 import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
 import ChatInterface from "./chat/ChatInterface";
@@ -6,11 +7,50 @@ import FloatMap from "./maps/FloatMap";
 import DataPlots from "./plots/DataPlots";
 import ProfileComparison from "./plots/ProfileComparison";
 import DataTable from "./dashboard/DataTable";
+import ErrorBoundary from "./ErrorBoundary";
 
 const Dashboard = () => {
+
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [activeView, setActiveView] = useState('overview');
   const [chatData, setChatData] = useState(null);
+  useEffect(() => {
+    console.log('Chat data received:', chatData);
+    console.log('Type of chat data:', typeof chatData);
+  }, [chatData]);
+
+
+
+  // Transform received data
+  const transformedData = useMemo(() => {
+    if (!chatData) return null;
+    return transformApiData(chatData);
+  }, [chatData]);
+
+  // Handle data received from chat
+  const handleDataReceived = (data) => {
+    console.log('Raw data received:', data);
+    setChatData(data);
+    // Auto-switch view based on data type
+    if (data && data.type) {
+      if (data.type.includes('profile')) {
+        setActiveView('plots');
+      } else if (data.type.includes('map')) {
+        setActiveView('map');
+      }
+    }
+  };
+
+  // Auto-switch view based on data type
+  useEffect(() => {
+    if (!transformedData) return;
+
+    if (transformedData.type?.includes('profile')) {
+      setActiveView('plots');
+    } else if (transformedData.floats) {
+      setActiveView('map');
+    }
+  }, [transformedData]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white">
@@ -54,40 +94,63 @@ const Dashboard = () => {
           </div>
 
           {/* Views Content */}
+
+
+
           {activeView === 'overview' && (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
               <section className="relative z-0 bg-white/10 rounded-2xl p-4 overflow-hidden ring-1 ring-white/10 shadow-md">
-                <FloatMap key={`overview-${activeView}`} data={chatData} />
+                <ErrorBoundary>
+                  <FloatMap key={`overview-${activeView}`} data={transformedData} />
+                </ErrorBoundary>
               </section>
               <section className="bg-white/10 rounded-2xl p-4 overflow-hidden ring-1 ring-white/10 shadow-md">
-                <DataPlots data={chatData} />
+                <ErrorBoundary>
+                  <DataPlots data={transformedData} />
+                </ErrorBoundary>
               </section>
             </div>
           )}
 
+
+
           {activeView === 'map' && (
             <section className="relative z-0 bg-white/10 rounded-2xl p-6 overflow-hidden ring-1 ring-white/10 shadow-md" style={{minHeight:'600px', height:'600px'}}>
               <div className="h-full w-full">
-                <FloatMap key={`map-${activeView}`} data={chatData} />
+                <ErrorBoundary>
+                  <FloatMap key={`map-${activeView}`} data={transformedData} />
+                </ErrorBoundary>
               </div>
             </section>
           )}
 
+
+
           {activeView === 'plots' && (
             <section className="bg-white/10 rounded-2xl p-6 overflow-hidden ring-1 ring-white/10 shadow-md" style={{minHeight:'620px'}}>
-              <DataPlots data={chatData} />
+              <ErrorBoundary>
+                <DataPlots data={transformedData} />
+              </ErrorBoundary>
             </section>
           )}
+
+
 
           {activeView === 'comparison' && (
             <section className="bg-white/10 rounded-2xl p-6 overflow-hidden ring-1 ring-white/10 shadow-md" style={{minHeight:'620px'}}>
-              <ProfileComparison data={chatData} />
+              <ErrorBoundary>
+                <ProfileComparison data={transformedData} />
+              </ErrorBoundary>
             </section>
           )}
 
+
+
           {activeView === 'table' && (
             <section className="bg-white/10 rounded-2xl p-6 overflow-hidden ring-1 ring-white/10 shadow-md" style={{minHeight:'620px'}}>
-              <DataTable data={chatData} />
+              <ErrorBoundary>
+                <DataTable data={transformedData} />
+              </ErrorBoundary>
             </section>
           )}
 
@@ -147,7 +210,7 @@ const Dashboard = () => {
               <button onClick={() => setIsChatOpen(false)} className="px-3 py-1 rounded bg-white/20 hover:bg-white/30 text-sm">Close</button>
             </div>
           <div className="flex-1 overflow-hidden">
-            <ChatInterface onDataReceived={setChatData} />
+            <ChatInterface onDataReceived={handleDataReceived} />
           </div>
           </div>
         </div>
