@@ -5,7 +5,8 @@ from sqlalchemy import create_engine
 from db.database import DB_URI, Base
 from auth import routes as authroute
 from auth import profile
-from rag.updated_pipeline import rag_query
+# from rag.updated_pipeline import rag_query
+from rag.dataVisualisation import rag_query
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
@@ -47,14 +48,16 @@ async def chat(req: ChatRequest):
         if not req.query.strip():
             raise HTTPException(status_code=400, detail="Query cannot be empty")
         
-        result = rag_query(
+
+        # This should return a tuple (message, data)
+        message, data = rag_query(
             user_query=req.query.strip(),
             chroma_path=CHROMA_PATH,
             collection_name=COLLECTION_NAME,
             db_uri=DB_URI
         )
 
-        return {"message": result or "No relevant information found.", "data": None}
+        return {"message": message, "data": data}
 
     except Exception as e:
         return {"message": f"⚠️ Error: {str(e)}", "data": None}
