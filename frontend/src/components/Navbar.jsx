@@ -33,11 +33,20 @@ const Navbar = ({ onOpenChat }) => {
         </div>
 
         <nav className="flex items-center space-x-2">
+
           <Link
             to="/dashboard"
             className="px-3 py-2 rounded-md text-sm hover:bg-white/10"
           >
             Dashboard
+          </Link>
+
+          <Link
+            to="/floatchat"
+            className="px-3 py-2 rounded-md text-sm hover:bg-cyan-800/40 inline-flex items-center space-x-2 transition-colors"
+          >
+            <MessageCircle className="w-4 h-4 text-cyan-300" />
+            <span>FloatChat</span>
           </Link>
 
           <Link

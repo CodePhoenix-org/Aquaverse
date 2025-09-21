@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useLocation } from 'react-router-dom';
 import { transformApiData } from "../utils/dataTransformers";
 import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
@@ -10,10 +11,19 @@ import DataTable from "./dashboard/DataTable";
 import ErrorBoundary from "./ErrorBoundary";
 
 const Dashboard = () => {
+  const location = useLocation();
 
   const [isChatOpen, setIsChatOpen] = useState(false);
-  const [activeView, setActiveView] = useState('overview');
-  const [chatData, setChatData] = useState(null);
+  // If navigation state has vizTab, use it as initial tab, else 'overview'
+  const [activeView, setActiveView] = useState(location.state?.vizTab || 'overview');
+  // If navigation state has vizData, use it as initial data, else null
+  const [chatData, setChatData] = useState(location.state?.vizData || null);
+  useEffect(() => {
+    // If navigation state changes (e.g., user comes from FloatChat), update state
+    if (location.state?.vizData) setChatData(location.state.vizData);
+    if (location.state?.vizTab) setActiveView(location.state.vizTab);
+    // eslint-disable-next-line
+  }, [location.state]);
   useEffect(() => {
     console.log('Chat data received:', chatData);
     console.log('Type of chat data:', typeof chatData);

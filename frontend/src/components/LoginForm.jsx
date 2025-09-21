@@ -33,7 +33,7 @@ const LoginForm = () => {
       // Update AuthContext
       login(userData);
 
-      navigate("/dashboard");
+  navigate("/floatchat");
     } catch (err) {
       alert(err.response?.data?.detail || "Login failed!");
     }
