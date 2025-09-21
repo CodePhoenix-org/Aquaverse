@@ -299,13 +299,26 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
 
         {/* New Chat Button */}
         <div className={`p-4 ${!sidebarOpen ? 'flex justify-center' : ''}`}>
-          <button className={`
-            ${sidebarOpen ? 'w-full' : 'w-12 h-12'}
-            ${themeClasses.cardBg} ${themeClasses.border} border ${themeClasses.hoverBg} ${themeClasses.textSecondary}
-            py-3 px-4 rounded-xl flex items-center justify-center space-x-2 transition-colors shadow-sm
-            ${!sidebarOpen ? 'justify-center' : ''}
-            hover:scale-105
-          `}>
+          <button
+            className={`
+              ${sidebarOpen ? 'w-full' : 'w-12 h-12'}
+              ${themeClasses.cardBg} ${themeClasses.border} border ${themeClasses.hoverBg} ${themeClasses.textSecondary}
+              py-3 px-4 rounded-xl flex items-center justify-center space-x-2 transition-colors shadow-sm
+              ${!sidebarOpen ? 'justify-center' : ''}
+              hover:scale-105
+            `}
+            onClick={() => {
+              setMessages([]);
+              setInputText('');
+              setLastVizData(null);
+              setLastVizTab(null);
+              // Also clear persisted state
+              localStorage.removeItem('floatchat_messages');
+              localStorage.removeItem('floatchat_lastVizData');
+              localStorage.removeItem('floatchat_lastVizTab');
+              localStorage.removeItem('floatchat_inputText');
+            }}
+          >
             <Edit3 className="w-5 h-5" />
             {sidebarOpen && <span>New chat</span>}
           </button>
