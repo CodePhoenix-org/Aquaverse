@@ -44,6 +44,12 @@ const Navbar = ({ onOpenChat }) => {
         </div>
 
         <nav className="flex items-center space-x-2">
+             <Link
+            to="/predict"
+            className="px-3 py-2 rounded-md text-sm hover:bg-white/10"
+          >
+            Disaster Prediction
+          </Link>
           <Link
             to="/dashboard"
             className="px-3 py-2 rounded-md text-sm hover:bg-white/10"

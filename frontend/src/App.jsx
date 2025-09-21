@@ -6,6 +6,7 @@ import History from "./Pages/History";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/Authcontext";
 import FloatChat from "./components/FloatChat";
+import Predictor from "./components/Predictor";
 
 // ✅ Import Toastify
 import { ToastContainer } from "react-toastify";
@@ -25,6 +26,7 @@ function App() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/history" element={<History />} />
           </Route>
+          <Route path="/predict" element={<Predictor />}></Route>
 
           {/* FloatChat route (public) */}
           <Route path="/floatchat" element={<FloatChat />} />
