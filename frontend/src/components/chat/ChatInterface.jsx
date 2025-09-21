@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PaperAirplaneIcon } from '@heroicons/react/24/outline';
+import { PaperAirplaneIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { Send, Bot, User, Loader2, X } from 'lucide-react';
 import axios from 'axios';
 
-const ChatInterface = ({ onDataReceived }) => {
+const ChatInterface = ({ onDataReceived, onCloseChat }) => {
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -14,6 +15,8 @@ const ChatInterface = ({ onDataReceived }) => {
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [lastVizData, setLastVizData] = useState(null);
+  const [lastVizTab, setLastVizTab] = useState(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -53,6 +56,7 @@ const ChatInterface = ({ onDataReceived }) => {
       // Extract the message properly
       let messageContent = '';
       let responseData = null;
+      let vizTab = null;
 
       // Handle both array and object responses
       if (Array.isArray(response.data)) {
@@ -67,6 +71,18 @@ const ChatInterface = ({ onDataReceived }) => {
         // Fallback for unexpected formats
         messageContent = String(response.data);
       }
+
+      // Determine visualization tab based on data type
+      if (responseData && responseData.type) {
+        if (responseData.type.includes('profile')) vizTab = 'plots';
+        else if (responseData.type.includes('map')) vizTab = 'map';
+        else if (responseData.type.includes('comparison')) vizTab = 'comparison';
+        else if (responseData.type.includes('table')) vizTab = 'table';
+      }
+
+      // Store visualization data for the "View Visualization" button
+      setLastVizData(responseData);
+      setLastVizTab(vizTab);
 
       const botMessage = {
         id: Date.now() + 1,
@@ -103,55 +119,87 @@ const ChatInterface = ({ onDataReceived }) => {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Chat Header */}
-      <div className="bg-gradient-to-r from-emerald-600 to-fuchsia-600 text-white p-3">
-        <h2 className="text-base font-semibold">
-          Ask me about ocean data, floats, and profiles
-        </h2>
-      </div>
-
+    <div className="flex flex-col h-full bg-gradient-to-br from-gray-50 to-white">
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`flex ${
-              message.type === 'user' ? 'justify-end' : 'justify-start'
-            }`}
-          >
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin">
+        {messages.map((message, index) => {
+          const isLastBotMsg = 
+            message.type === 'bot' && 
+            index === messages.length - 1 && 
+            lastVizData && 
+            /check the visualization|visualization|visualize|plot|chart|graph/i.test(message.content);
+          
+          return (
             <div
-              className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${message.type === 'user'
-                  ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-800'
-                }`}
+              key={message.id}
+              className={`flex ${
+                message.type === 'user' ? 'justify-end' : 'justify-start'
+              }`}
             >
-              {/* <p className="text-sm">{message.content}</p> */}
-              <p className="text-sm">
-                {typeof message.content === 'string'
-                  ? message.content
-                  : JSON.stringify(message.content)}
-              </p>
-              <p className="text-xs mt-1 opacity-70">
-                {message.timestamp.toLocaleTimeString()}
-              </p>
+              <div className={`flex items-start gap-3 max-w-[80%] ${
+                message.type === 'user' ? 'flex-row-reverse' : 'flex-row'
+              }`}>
+                {/* Avatar */}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  message.type === 'user' 
+                    ? 'bg-gradient-to-r from-blue-500 to-blue-600' 
+                    : 'bg-gradient-to-r from-emerald-500 to-emerald-600'
+                }`}>
+                  {message.type === 'user' ? (
+                    <User className="w-4 h-4 text-white" />
+                  ) : (
+                    <Bot className="w-4 h-4 text-white" />
+                  )}
+                </div>
+                
+                {/* Message Bubble */}
+                <div className={`px-4 py-3 rounded-2xl shadow-sm ${
+                  message.type === 'user'
+                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
+                    : 'bg-white text-gray-800 border border-gray-200'
+                }`}>
+                  <p className="text-sm leading-relaxed">
+                    {typeof message.content === 'string'
+                      ? message.content
+                      : JSON.stringify(message.content)}
+                  </p>
+                  
+                  {/* View Visualization Button */}
+                  {isLastBotMsg && (
+                    <button
+                      onClick={() => {
+                        onDataReceived(lastVizData);
+                        onCloseChat && onCloseChat();
+                      }}
+                      className="mt-3 px-4 py-2 bg-gradient-to-r from-emerald-500 to-blue-600 text-white rounded-xl shadow hover:scale-105 transition-all duration-200 flex items-center gap-2 text-sm font-medium"
+                    >
+                      <Bot className="w-4 h-4" />
+                      View Visualization
+                    </button>
+                  )}
+                  
+                  <p className={`text-xs mt-2 ${
+                    message.type === 'user' ? 'text-blue-100' : 'text-gray-500'
+                  }`}>
+                    {message.timestamp.toLocaleTimeString()}
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {isLoading && (
           <div className="flex justify-start">
-            <div className="bg-gray-100 px-4 py-2 rounded-lg">
-              <div className="flex space-x-1">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                <div
-                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                  style={{ animationDelay: '0.1s' }}
-                ></div>
-                <div
-                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
-                  style={{ animationDelay: '0.2s' }}
-                ></div>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-600 flex items-center justify-center">
+                <Bot className="w-4 h-4 text-white" />
+              </div>
+              <div className="bg-white px-4 py-3 rounded-2xl shadow-sm border border-gray-200">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
+                  <span className="text-sm text-gray-600">Analyzing your request...</span>
+                </div>
               </div>
             </div>
           </div>
@@ -161,24 +209,52 @@ const ChatInterface = ({ onDataReceived }) => {
       </div>
 
       {/* Input Area */}
-      <div className="border-t border-gray-200 p-4">
-        <div className="flex space-x-2">
-          <textarea
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Ask about ARGO data (e.g., 'Show temperature profiles in the Indian Ocean')"
-            className="flex-1 border border-gray-300 rounded-lg px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 placeholder:text-gray-400 bg-white"
-            rows="2"
-            disabled={isLoading}
-          />
+      <div className="border-t border-gray-200 bg-white p-4">
+        <div className="flex gap-3">
+          <div className="flex-1 relative">
+            <textarea
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Ask about ARGO ocean data... (e.g., 'Show temperature profiles in the Indian Ocean')"
+              className="w-full border border-gray-300 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder:text-gray-400 bg-gray-50 hover:bg-white transition-colors duration-200"
+              rows="2"
+              disabled={isLoading}
+            />
+            <div className="absolute bottom-2 right-2 text-xs text-gray-400">
+              Press Enter to send
+            </div>
+          </div>
           <button
             onClick={handleSendMessage}
             disabled={!inputValue.trim() || isLoading}
-            className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-4 py-3 rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center min-w-[48px] shadow-sm hover:shadow-md"
           >
-            <PaperAirplaneIcon className="h-5 w-5" />
+            {isLoading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Send className="h-5 w-5" />
+            )}
           </button>
+        </div>
+        
+        {/* Quick Actions */}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className="text-xs text-gray-500">Quick actions:</span>
+          {[
+            "Show temperature profiles",
+            "Find floats in Pacific",
+            "Compare salinity data",
+            "Map view of recent data"
+          ].map((action, index) => (
+            <button
+              key={index}
+              onClick={() => setInputValue(action)}
+              className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors duration-200"
+            >
+              {action}
+            </button>
+          ))}
         </div>
       </div>
     </div>
