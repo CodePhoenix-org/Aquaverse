@@ -71,7 +71,7 @@ const FloatMap = ({ data }) => {
         </p>
       </div>
 
-      <div className="h-full" style={{ minHeight: 'calc(100vh - 220px)' }}>
+      <div className="h-full" style={{ minHeight: '400px', height: '400px' }}>
         <MapContainer
           center={defaultCenter}
           zoom={defaultZoom}

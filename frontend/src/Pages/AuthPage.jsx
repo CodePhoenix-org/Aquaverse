@@ -17,18 +17,19 @@ export default function Auth() {
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
-      {/* Left Half - Image Slider */}
+      {/* Left Half - Video Background (replaces Image Slider) */}
       <div className="w-full lg:w-1/2 h-screen lg:h-screen relative overflow-hidden">
-        <ImagesSlider
-          images={images}
-          overlay={true}
-          overlayClassName="bg-gradient-to-br from-black/40 to-black/60"
-          className="h-full w-full"
-          autoplay={true}
-          direction="up"
+        {/* <ImagesSlider ... /> */}
+        {/* Video background */}
+        <video
+          className="h-full w-full object-cover"
+          src="/videos/authVid.mp4"
+          autoPlay
+          loop
+          muted
+          playsInline
         />
-        
-        {/* Overlay Content on Images */}
+        {/* Overlay Content on Video */}
         <div className="absolute inset-0 z-10 flex flex-col justify-center items-center text-white p-4 lg:p-8">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
