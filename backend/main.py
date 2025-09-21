@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from db.database import DB_URI, Base
 from auth import routes as authroute
 from auth import profile
-# from rag.updated_pipeline import rag_query
+from routes import chat
 from rag.dataVisualisation import rag_query
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -28,6 +28,8 @@ Base.metadata.create_all(bind=engine)
 
 app.include_router(authroute.router, prefix="/auth", tags=["Auth"])
 app.include_router(profile.router, prefix="/profiles", tags=["Profiles"])
+app.include_router(chat.router, prefix="/chat", tags=["Chat"]) 
+
 
 # ChromaDB configuration
 CHROMA_PATH = os.getenv('CHROMA_PATH') or os.getenv('chromapath') or os.path.join(os.path.dirname(os.path.dirname(__file__)), "db", "chroma_db")
@@ -42,7 +44,7 @@ def home():
 class ChatRequest(BaseModel):
     query: str
 
-@app.post("/chat")
+@app.post("/chat/query")
 async def chat(req: ChatRequest):
     try:
         if not req.query.strip():
