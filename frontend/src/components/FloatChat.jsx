@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -28,7 +27,9 @@ import {
   Sparkles,
   Moon,
   Sun,
-  Paperclip
+  Paperclip,
+  Loader2,
+  AlertCircle
 } from 'lucide-react';
 
 // Inject custom scrollbar styles globally (only once)
@@ -57,33 +58,149 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// Utility function to get JWT token
+const getAuthToken = () => {
+  try {
+    return localStorage.getItem('auth_token');
+  } catch {
+    return null;
+  }
+};
+
+// Check if backend chat history endpoints are available
+const checkChatHistoryEndpoints = async (token) => {
+  if (!token) return false;
+  
+  try {
+    const response = await fetch('http://127.0.0.1:8000/chat/history', {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`, 
+        'Content-Type': 'application/json' 
+      },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+};
+
+// Fetch chat history from backend (with fallback)
+const fetchChatHistory = async (token, setMessages, setBackendAvailable) => {
+  if (!token) return;
+
+  try {
+    const response = await fetch('http://127.0.0.1:8000/chat/history', {
+      method: 'GET',
+      headers: { 
+        'Authorization': `Bearer ${token}`, 
+        'Content-Type': 'application/json' 
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        setBackendAvailable(false);
+        console.warn('Chat history endpoints not found. Using local storage.');
+        return;
+      }
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const mappedMessages = data.map(msg => ({
+      id: msg.id,
+      type: msg.sender === 'user' ? 'user' : 'bot',
+      content: msg.content,
+      timestamp: new Date(msg.timestamp),
+      viz_data: msg.viz_data || null,
+      viz_tab: msg.viz_tab || null
+    }));
+
+    setMessages(mappedMessages);
+    setBackendAvailable(true);
+  } catch (error) {
+    console.error('Error fetching chat history:', error);
+    setBackendAvailable(false);
+    // Fallback to local storage if backend fails
+    const fallback = localStorage.getItem('floatchat_messages');
+    if (fallback) {
+      setMessages(JSON.parse(fallback));
+    }
+  }
+};
+
+// Save message to backend (with fallback)
+const saveMessageToBackend = async (token, messageData, setBackendAvailable) => {
+  if (!token) return;
+
+  try {
+    const response = await fetch('http://127.0.0.1:8000/chat/history', {
+      method: 'POST',
+      headers: { 
+        'Authorization': `Bearer ${token}`, 
+        'Content-Type': 'application/json' 
+      },
+      body: JSON.stringify({
+        sender: messageData.type === 'user' ? 'user' : 'bot',
+        content: messageData.content,
+        viz_data: messageData.viz_data || null,
+        viz_tab: messageData.viz_tab || null
+      }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        setBackendAvailable(false);
+        console.warn('Chat history POST endpoint not found. Using local storage.');
+        return;
+      }
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error saving message:', error);
+    setBackendAvailable(false);
+    throw error;
+  }
+};
+
 // Handle Enter key press in textarea
-function handleKeyPress(event) {
+const handleKeyPress = (event, handleSendMessage) => {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
     handleSendMessage();
   }
-}
+};
+
 // Handle file input change
-function handleFileChange(event) {
+const handleFileChange = (event) => {
   const file = event.target.files && event.target.files[0];
   if (file) {
-    // You can add file processing logic here, e.g., upload or parse
-    // For now, just log the file name
     console.log('Selected file:', file.name);
   }
-}
+};
 
 const FloatChat = () => {
   const navigate = useNavigate();
-  // Restore state from localStorage if available
+  
+  // Get auth token
+  const token = getAuthToken();
+  const isAuthenticated = !!token;
+  
+  // Backend availability state
+  const [backendAvailable, setBackendAvailable] = useState(true);
+  
+  // Restore state from localStorage if available (only for unauthenticated users or if backend unavailable)
   const getInitialState = (key, fallback) => {
+    if (isAuthenticated && backendAvailable) return fallback; // Don't use localStorage for auth users with working backend
     try {
       const stored = localStorage.getItem(key);
       if (stored) return JSON.parse(stored);
     } catch {}
     return fallback;
   };
+  
   const [messages, setMessages] = useState(() => getInitialState('floatchat_messages', []));
   const [lastVizData, setLastVizData] = useState(() => getInitialState('floatchat_lastVizData', null));
   const [lastVizTab, setLastVizTab] = useState(() => getInitialState('floatchat_lastVizTab', null));
@@ -91,27 +208,22 @@ const FloatChat = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
-  const [darkMode, setDarkMode] = useState(true);
-  const [chatHistory, setChatHistory] = useState([
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      return localStorage.getItem('darkMode') === 'true';
+    } catch {
+      return true;
+    }
+  });
+  
+  const [chatHistory] = useState([
     { id: 1, title: "Ocean temperature analysis", snippet: "Show me temperature profiles...", date: "Today", starred: false },
     { id: 2, title: "Salinity data Arabian Sea", snippet: "Compare salinity levels in...", date: "Yesterday", starred: true },
     { id: 3, title: "ARGO float trajectories", snippet: "Display float paths for...", date: "2 days ago", starred: false },
     { id: 4, title: "BGC parameter analysis", snippet: "Analyze bio-geo-chemical...", date: "1 week ago", starred: false }
   ]);
-  // Persist chat state to localStorage on change
-  useEffect(() => {
-    localStorage.setItem('floatchat_messages', JSON.stringify(messages));
-  }, [messages]);
-  useEffect(() => {
-    localStorage.setItem('floatchat_lastVizData', JSON.stringify(lastVizData));
-  }, [lastVizData]);
-  useEffect(() => {
-    localStorage.setItem('floatchat_lastVizTab', JSON.stringify(lastVizTab));
-  }, [lastVizTab]);
-  useEffect(() => {
-    localStorage.setItem('floatchat_inputText', JSON.stringify(inputText));
-  }, [inputText]);
-  
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -121,6 +233,61 @@ const FloatChat = () => {
   };
 
   useEffect(scrollToBottom, [messages]);
+
+  // Check backend availability and load chat history on mount for authenticated users
+  useEffect(() => {
+    const initializeChat = async () => {
+      if (isAuthenticated && token) {
+        setIsLoadingHistory(true);
+        // First check if endpoints exist
+        const endpointsAvailable = await checkChatHistoryEndpoints(token);
+        setBackendAvailable(endpointsAvailable);
+        
+        if (endpointsAvailable) {
+          await fetchChatHistory(token, setMessages, setBackendAvailable);
+        } else {
+          // Fallback to local storage
+          const fallback = localStorage.getItem('floatchat_messages');
+          if (fallback) {
+            setMessages(JSON.parse(fallback));
+          }
+        }
+        setIsLoadingHistory(false);
+      }
+    };
+
+    initializeChat();
+  }, [token]);
+
+  // Persist chat state to localStorage only when not using backend
+  useEffect(() => { 
+    if (!isAuthenticated || !backendAvailable) {
+      localStorage.setItem('floatchat_messages', JSON.stringify(messages));
+    }
+  }, [messages, isAuthenticated, backendAvailable]);
+  
+  useEffect(() => { 
+    if (!isAuthenticated || !backendAvailable) {
+      localStorage.setItem('floatchat_lastVizData', JSON.stringify(lastVizData));
+    }
+  }, [lastVizData, isAuthenticated, backendAvailable]);
+  
+  useEffect(() => { 
+    if (!isAuthenticated || !backendAvailable) {
+      localStorage.setItem('floatchat_lastVizTab', JSON.stringify(lastVizTab));
+    }
+  }, [lastVizTab, isAuthenticated, backendAvailable]);
+  
+  useEffect(() => { 
+    if (!isAuthenticated || !backendAvailable) {
+      localStorage.setItem('floatchat_inputText', JSON.stringify(inputText));
+    }
+  }, [inputText, isAuthenticated, backendAvailable]);
+
+  // Persist dark mode
+  useEffect(() => {
+    localStorage.setItem('darkMode', darkMode);
+  }, [darkMode]);
 
   const toggleRecording = () => {
     setIsRecording(!isRecording);
@@ -136,76 +303,146 @@ const FloatChat = () => {
     fileInputRef.current?.click();
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (inputText.trim() === '') return;
 
     const userMessage = {
-      id: messages.length + 1,
+      id: `temp-${Date.now()}`, // Temporary ID for optimistic update
       type: 'user',
       content: inputText,
-      timestamp: new Date()
+      timestamp: new Date(),
+      isOptimistic: true
     };
 
+    // Optimistic update: show user message immediately
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
     setIsTyping(true);
 
-    // Show canned message first
-    setTimeout(() => {
-      const cannedBotMessage = {
-        id: messages.length + 2,
-        type: 'bot',
-        content: `I'll analyze your ocean data query: "${inputText}"
-Based on our ARGO float database, I can help you explore temperature, salinity, and BGC parameters across different ocean regions. Let me process this request and generate the appropriate visualizations and insights.`,
-        timestamp: new Date()
-      };
-      setMessages(prev => [...prev, cannedBotMessage]);
+    // Save user message to backend if authenticated and backend available
+    if (isAuthenticated && token && backendAvailable) {
+      try {
+        await saveMessageToBackend(token, userMessage, setBackendAvailable);
+      } catch (error) {
+        console.error('Error saving user message:', error);
+        // Remove optimistic message on error (if backend fails)
+        if (error.message.includes('404')) {
+          setBackendAvailable(false);
+          setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
+          setIsTyping(false);
+          return;
+        }
+      }
+    }
 
-      // Now fetch real backend response
-      import('axios').then(({ default: axios }) => {
-        axios.post('http://127.0.0.1:8000/chat', { query: inputText })
-          .then(res => {
-            // Support both array and object responses
-            let backendMsg = '';
-            let vizData = null;
-            let vizTab = null;
-            if (Array.isArray(res.data)) {
-              backendMsg = res.data[0] || 'No response from backend.';
-              vizData = res.data[1] || null;
-            } else if (typeof res.data === 'object') {
-              backendMsg = res.data.message || res.data.answer || 'No response from backend.';
-              vizData = res.data.data || null;
-            } else {
-              backendMsg = String(res.data);
-            }
-            // Heuristic: set tab type based on vizData.type
-            if (vizData && vizData.type) {
-              if (vizData.type.includes('profile')) vizTab = 'plots';
-              else if (vizData.type.includes('map')) vizTab = 'map';
-              else if (vizData.type.includes('comparison')) vizTab = 'comparison';
-              else if (vizData.type.includes('table')) vizTab = 'table';
-            }
-            setLastVizData(vizData);
-            setLastVizTab(vizTab);
-            setMessages(prev => [...prev, {
-              id: prev.length + 1,
-              type: 'bot',
-              content: backendMsg,
-              timestamp: new Date()
-            }]);
-          })
-          .catch(err => {
-            setMessages(prev => [...prev, {
-              id: prev.length + 1,
-              type: 'bot',
-              content: '⚠️ Error fetching backend response.',
-              timestamp: new Date()
-            }]);
-          })
-          .finally(() => setIsTyping(false));
-      });
-    }, 1500);
+    // Add thinking message
+    const thinkingMessageId = `temp-thinking-${Date.now()}`;
+    const thinkingBotMessage = {
+      id: thinkingMessageId,
+      type: 'bot',
+      content: `🤔 Thinking... Analyzing your ocean data query: "${inputText}"\n\nProcessing ARGO float database...`,
+      timestamp: new Date(),
+      isOptimistic: true
+    };
+    setMessages(prev => [...prev, thinkingBotMessage]);
+
+    // Fetch real backend response for AI
+    let apiResponse = null;
+    let apiError = null;
+
+    try {
+      const { default: axios } = await import('axios');
+      const config = token ? {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      } : {
+        headers: { 'Content-Type': 'application/json' }
+      };
+
+      const endpoint = token ? 'http://127.0.0.1:8000/chat/query' : 'http://127.0.0.1:8000/chat';
+      const res = await axios.post(endpoint, { query: inputText }, config);
+      apiResponse = res;
+    } catch (error) {
+      console.error('AI API call failed:', error);
+      apiError = error;
+    }
+
+    let backendMsg = '';
+    let vizData = null;
+    let vizTab = null;
+
+    if (apiError) {
+      backendMsg = '⚠️ Sorry, I encountered an error processing your request. Please try again.';
+    } else {
+      // Support both array and object responses
+      if (Array.isArray(apiResponse.data)) {
+        backendMsg = apiResponse.data[0] || 'No response from backend.';
+        vizData = apiResponse.data[1] || null;
+      } else if (typeof apiResponse.data === 'object') {
+        backendMsg = apiResponse.data.message || apiResponse.data.answer || 'No response from backend.';
+        vizData = apiResponse.data.data || null;
+      } else {
+        backendMsg = String(apiResponse.data);
+      }
+
+      // Heuristic: set tab type based on vizData.type
+      if (vizData && vizData.type) {
+        if (vizData.type.includes('profile')) vizTab = 'plots';
+        else if (vizData.type.includes('map')) vizTab = 'map';
+        else if (vizData.type.includes('comparison')) vizTab = 'comparison';
+        else if (vizData.type.includes('table')) vizTab = 'table';
+      }
+
+      setLastVizData(vizData);
+      setLastVizTab(vizTab);
+
+      // Save bot response to backend if authenticated and backend available
+      if (isAuthenticated && token && backendAvailable) {
+        const botMessageData = {
+          id: `temp-bot-${Date.now()}`,
+          type: 'bot',
+          content: backendMsg,
+          timestamp: new Date(),
+          viz_data: vizData,
+          viz_tab: vizTab
+        };
+        try {
+          await saveMessageToBackend(token, botMessageData, setBackendAvailable);
+        } catch (error) {
+          console.error('Error saving bot message:', error);
+          if (error.message.includes('404')) {
+            setBackendAvailable(false);
+          }
+        }
+      }
+    }
+
+    // Replace thinking message with actual response
+    setMessages(prev => prev.map(msg => 
+      msg.id === thinkingMessageId 
+        ? { 
+            ...msg, 
+            id: `bot-${Date.now()}`, // Give it a stable ID
+            content: backendMsg,
+            viz_data: vizData,
+            viz_tab: vizTab,
+            isOptimistic: false
+          }
+        : msg
+    ));
+
+    setIsTyping(false);
+
+    // Refetch complete history from backend to ensure consistency (only if backend is available)
+    if (isAuthenticated && token && backendAvailable) {
+      setTimeout(() => {
+        fetchChatHistory(token, setMessages, setBackendAvailable);
+      }, 500);
+    }
   };
+
   const samplePrompts = [
     {
       icon: <Globe className="w-5 h-5" />,
@@ -250,6 +487,21 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
     buttonHoverBg: darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-100'
   };
 
+  // Show loading screen while fetching history
+  if (isAuthenticated && isLoadingHistory) {
+    return (
+      <div className={`h-screen ${themeClasses.bg} flex items-center justify-center`}>
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+          <p className={`text-lg ${themeClasses.text}`}>Loading your chat history...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show backend unavailable warning
+  const showBackendWarning = isAuthenticated && !backendAvailable;
+
   return (
     <div className={`h-screen ${themeClasses.bg} flex relative transition-colors duration-200`}>
       {/* Hidden file input */}
@@ -261,10 +513,22 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
         className="hidden"
       />
 
+      {/* Backend Unavailable Warning Banner */}
+      {showBackendWarning && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-100 border-b border-yellow-300 dark:bg-yellow-900 dark:border-yellow-700">
+          <div className="max-w-4xl mx-auto px-4 py-2 flex items-center space-x-2">
+            <AlertCircle className="w-4 h-4 text-yellow-700 dark:text-yellow-300" />
+            <span className="text-sm text-yellow-800 dark:text-yellow-200">
+              Chat history endpoints not found. Using local storage as fallback.
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <div
         className={`
-          fixed inset-y-0 left-0 z-50
+          fixed inset-y-0 left-0 z-50 ${showBackendWarning ? 'lg:top-12' : ''}
           ${sidebarOpen ? 'w-80' : 'w-16'}
           ${themeClasses.sidebarBg} ${themeClasses.border} border-r
           transition-all duration-300 ease-in-out
@@ -284,7 +548,12 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
             {sidebarOpen && (
               <div>
                 <h1 className={`text-lg font-semibold ${themeClasses.text}`}>FloatChat</h1>
-                <p className={`text-xs ${themeClasses.textMuted}`}>ARGO Data Discovery</p>
+                <p className={`text-xs ${themeClasses.textMuted}`}>
+                  {isAuthenticated 
+                    ? (backendAvailable ? 'ARGO Data Discovery' : 'ARGO Data Discovery (Local)')
+                    : 'ARGO Data Discovery (Guest)'
+                  }
+                </p>
               </div>
             )}
           </div>
@@ -307,16 +576,35 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
               ${!sidebarOpen ? 'justify-center' : ''}
               hover:scale-105
             `}
-            onClick={() => {
-              setMessages([]);
-              setInputText('');
-              setLastVizData(null);
-              setLastVizTab(null);
-              // Also clear persisted state
-              localStorage.removeItem('floatchat_messages');
-              localStorage.removeItem('floatchat_lastVizData');
-              localStorage.removeItem('floatchat_lastVizTab');
-              localStorage.removeItem('floatchat_inputText');
+            onClick={async () => {
+              if (isAuthenticated && token && backendAvailable) {
+                // For authenticated users with working backend, clear backend history
+                try {
+                  await fetch('http://127.0.0.1:8000/chat/history', {
+                    method: 'DELETE',
+                    headers: { 
+                      'Authorization': `Bearer ${token}`, 
+                      'Content-Type': 'application/json' 
+                    },
+                  });
+                  await fetchChatHistory(token, setMessages, setBackendAvailable);
+                } catch (err) {
+                  console.error('Error clearing chat history:', err);
+                  if (err.message.includes('404')) {
+                    setBackendAvailable(false);
+                  }
+                }
+              } else {
+                // For guest users or backend unavailable, clear local state
+                setMessages([]);
+                setInputText('');
+                setLastVizData(null);
+                setLastVizTab(null);
+                localStorage.removeItem('floatchat_messages');
+                localStorage.removeItem('floatchat_lastVizData');
+                localStorage.removeItem('floatchat_lastVizTab');
+                localStorage.removeItem('floatchat_inputText');
+              }
             }}
           >
             <Edit3 className="w-5 h-5" />
@@ -354,7 +642,6 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
 
         {/* Sidebar Footer */}
         <div className={`p-4 ${themeClasses.border} border-t space-y-2`}>
-          {/* Dashboard Button */}
           <button
             className={`w-full text-left p-3 ${themeClasses.cardHoverBg} rounded-xl flex items-center space-x-3 transition-colors ${themeClasses.textSecondary} ${!sidebarOpen ? 'justify-center' : ''}`}
             onClick={() => navigate('/dashboard')}
@@ -362,7 +649,6 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
             <BarChart3 className="w-5 h-5" />
             {sidebarOpen && <span>Dashboard</span>}
           </button>
-          {/* Settings Button */}
           <button className={`w-full text-left p-3 ${themeClasses.cardHoverBg} rounded-xl flex items-center space-x-3 transition-colors ${themeClasses.textSecondary} ${!sidebarOpen ? 'justify-center' : ''}`}>
             <Settings className="w-5 h-5" />
             {sidebarOpen && <span>Settings</span>}
@@ -373,13 +659,13 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
       {/* Sidebar Overlay */}
       {sidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-25 z-40 lg:hidden"
+          className={`fixed inset-0 bg-black bg-opacity-25 z-40 lg:hidden ${showBackendWarning ? 'top-12' : ''}`}
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
+      <div className={`flex-1 flex flex-col ${showBackendWarning ? 'lg:pt-12' : ''}`}>
         {/* Header */}
         <div className={`${themeClasses.bg} ${themeClasses.borderLight} border-b px-4 py-3 flex items-center justify-between`}>
           <div className="flex items-center space-x-3">
@@ -411,7 +697,7 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
         </div>
 
         {/* Messages Area */}
-  <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           {messages.length === 0 ? (
             /* Welcome Screen */
             <div className="max-w-4xl mx-auto px-6 py-12">
@@ -456,7 +742,8 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
                 const isLastBotMsg =
                   message.type === 'bot' &&
                   idx === messages.length - 1 &&
-                  /check the visualization/i.test(message.content);
+                  (/check the visualization|view the chart|see the data|open dashboard/i.test(message.content) || message.viz_data);
+                
                 return (
                   <div key={message.id} className={`flex items-start space-x-4 ${message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -474,11 +761,11 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
                             : `${themeClasses.botMessageBg} ${themeClasses.text}`
                         }`}>
                           <p className="whitespace-pre-wrap m-0">{message.content}</p>
-                          {isLastBotMsg && (
+                          {isLastBotMsg && message.viz_data && (
                             <button
                               onClick={() => {
                                 navigate('/dashboard', {
-                                  state: lastVizData ? { vizData: lastVizData, vizTab: lastVizTab } : undefined
+                                  state: { vizData: message.viz_data, vizTab: message.viz_tab }
                                 });
                               }}
                               className="mt-4 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl shadow hover:scale-105 transition font-semibold text-sm"
@@ -510,10 +797,13 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
                     <Sparkles className="w-4 h-4 text-white" />
                   </div>
                   <div className={`${themeClasses.botMessageBg} p-4 rounded-2xl`}>
-                    <div className="flex space-x-2">
-                      <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`}></div>
-                      <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.1s' }}></div>
-                      <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.2s' }}></div>
+                    <div className="flex items-center space-x-3">
+                      <Loader2 className={`w-4 h-4 ${themeClasses.textMuted} animate-spin`} />
+                      <div className="flex space-x-2">
+                        <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`}></div>
+                        <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.1s' }}></div>
+                        <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.2s' }}></div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -532,7 +822,7 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
                   ref={inputRef}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  onKeyPress={handleKeyPress}
+                  onKeyPress={(e) => handleKeyPress(e, handleSendMessage)}
                   placeholder="Ask FloatChat about ocean data..."
                   className={`flex-1 bg-transparent border-none resize-none focus:outline-none placeholder-gray-500 ${themeClasses.text}`}
                   rows={1}
@@ -541,29 +831,32 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
                     maxHeight: '200px',
                     resize: 'none'
                   }}
+                  disabled={isTyping}
                 />
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={handleFileUpload}
-                    className={`p-2 rounded-full transition-colors ${themeClasses.textMuted} hover:text-gray-600 ${themeClasses.buttonHoverBg}`}
+                    disabled={isTyping}
+                    className={`p-2 rounded-full transition-colors ${themeClasses.textMuted} hover:text-gray-600 ${themeClasses.buttonHoverBg} ${isTyping ? 'opacity-50 cursor-not-allowed' : ''}`}
                     title="Upload ARGO data file"
                   >
                     <Paperclip className="w-5 h-5" />
                   </button>
                   <button
                     onClick={toggleRecording}
+                    disabled={isTyping}
                     className={`p-2 rounded-full transition-colors ${
                       isRecording 
                         ? 'bg-red-500 text-white animate-pulse' 
                         : `${themeClasses.textMuted} hover:text-gray-600 ${themeClasses.buttonHoverBg}`
-                    }`}
+                    } ${isTyping ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
                   </button>
                   <button
                     onClick={handleSendMessage}
-                    disabled={inputText.trim() === ''}
-                    className="p-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-full transition-colors"
+                    disabled={inputText.trim() === '' || isTyping}
+                    className={`p-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-full transition-colors ${isTyping ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     <Send className="w-5 h-5" />
                   </button>
@@ -572,7 +865,12 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
             </div>
             <div className="flex items-center justify-center mt-3">
               <p className={`text-xs ${themeClasses.textMuted}`}>
-                FloatChat can make mistakes. Consider checking important ocean data insights.
+                {isAuthenticated 
+                  ? (backendAvailable 
+                      ? 'FloatChat can make mistakes. Consider checking important ocean data insights.' 
+                      : 'Chat history endpoints not found. Using local storage.')
+                  : 'Guest mode: Your chat history will not be saved.'
+                }
               </p>
             </div>
           </div>

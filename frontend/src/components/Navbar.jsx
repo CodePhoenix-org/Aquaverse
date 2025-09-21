@@ -1,4 +1,5 @@
 import { Link, useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
 import {
   LogOut,
   User,
@@ -13,10 +14,20 @@ const Navbar = ({ onOpenChat }) => {
       localStorage.removeItem("auth_token");
       localStorage.removeItem("user");
       console.log("User logged out successfully");
+
+      toast.success("✅ Successfully logged out!", {
+        position: "top-right",
+        autoClose: 2500,
+      });
     } catch (err) {
       console.error("Error during logout:", err);
+      toast.error("❌ Error during logout. Try again.", {
+        position: "top-right",
+        autoClose: 2500,
+      });
     }
-    navigate("/"); // redirect to login or landing page
+
+    navigate("/"); 
   };
 
   return (
@@ -33,7 +44,6 @@ const Navbar = ({ onOpenChat }) => {
         </div>
 
         <nav className="flex items-center space-x-2">
-
           <Link
             to="/dashboard"
             className="px-3 py-2 rounded-md text-sm hover:bg-white/10"

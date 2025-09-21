@@ -13,6 +13,8 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     password = Column(String, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    messages = relationship("ChatMessage", back_populates="user", cascade="all, delete-orphan")
+
 
 class Profile(Base):
     __tablename__ = "argo_profiles"

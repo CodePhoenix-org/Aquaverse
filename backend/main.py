@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from sqlalchemy import create_engine
 from db.database import DB_URI, Base
 from auth import routes as authroute
@@ -28,12 +27,12 @@ Base.metadata.create_all(bind=engine)
 
 app.include_router(authroute.router, prefix="/auth", tags=["Auth"])
 app.include_router(profile.router, prefix="/profiles", tags=["Profiles"])
-app.include_router(chat.router, prefix="/chat", tags=["Chat"]) 
+app.include_router(chat.router, tags=["Chat"]) 
 
 
 # ChromaDB configuration
-CHROMA_PATH = os.getenv('CHROMA_PATH') or os.getenv('chromapath') or os.path.join(os.path.dirname(os.path.dirname(__file__)), "db", "chroma_db")
-COLLECTION_NAME = os.getenv('COLLECTION_NAME') or os.getenv('collectioname') or 'argo_summaries'
+CHROMA_PATH = os.getenv('chromapath') 
+COLLECTION_NAME = os.getenv('collectioname') 
 
 os.makedirs(CHROMA_PATH, exist_ok=True)
 
