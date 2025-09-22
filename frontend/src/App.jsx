@@ -7,7 +7,8 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/Authcontext";
 import FloatChat from "./components/FloatChat";
 import Predictor from "./components/Predictor";
-
+import Home from "./components/Home";
+import "./i18n";
 // ✅ Import Toastify
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -18,6 +19,7 @@ function App() {
       <Router>
         <Routes>
           {/* Public route */}
+          <Route path="/home" element={<Home />} />
           <Route path="/" element={<AuthPage />} />
 
           {/* Protected routes */}

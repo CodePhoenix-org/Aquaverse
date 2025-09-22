@@ -28,8 +28,7 @@ import {
   Moon,
   Sun,
   Paperclip,
-  Loader2,
-  AlertCircle
+  Info
 } from 'lucide-react';
 
 // Inject custom scrollbar styles globally (only once)
@@ -58,175 +57,280 @@ if (typeof window !== 'undefined') {
   }
 }
 
-// Utility function to get JWT token
-const getAuthToken = () => {
-  try {
-    return localStorage.getItem('auth_token');
-  } catch {
-    return null;
-  }
-};
-
-// Check if backend chat history endpoints are available
-const checkChatHistoryEndpoints = async (token) => {
-  if (!token) return false;
+// Enhanced Speech Recognition Detection
+const detectSpeechRecognition = () => {
+  if (typeof window === 'undefined') return false;
   
-  try {
-    const response = await fetch('http://127.0.0.1:8000/chat/history', {
-      method: 'GET',
-      headers: { 
-        'Authorization': `Bearer ${token}`, 
-        'Content-Type': 'application/json' 
-      },
-    });
-    return response.ok;
-  } catch {
-    return false;
+  // Check if running on secure context (required for SpeechRecognition)
+  const isSecureContext = window.isSecureContext || 
+    (window.location.protocol === 'https:' || window.location.hostname === 'localhost');
+  
+  if (!isSecureContext) {
+    console.warn('SpeechRecognition requires HTTPS or localhost');
+    return { supported: false, reason: 'insecure-context' };
   }
+
+  const SpeechRecognition = 
+    window.SpeechRecognition || 
+    window.webkitSpeechRecognition || 
+    window.mozSpeechRecognition || 
+    window.msSpeechRecognition;
+
+  const supported = !!SpeechRecognition;
+  
+  if (!supported) {
+    console.warn('SpeechRecognition API not supported in this browser');
+    return { supported: false, reason: 'not-supported' };
+  }
+
+  return { supported: true, reason: 'supported' };
 };
 
-// Fetch chat history from backend (with fallback)
-const fetchChatHistory = async (token, setMessages, setBackendAvailable) => {
-  if (!token) return;
+// Speech Recognition Utility
+class VoiceInput {
+  constructor(onTranscript, onError, onEnd) {
+    this.recognition = null;
+    this.onTranscript = onTranscript;
+    this.onError = onError;
+    this.onEnd = onEnd;
+    this.detection = detectSpeechRecognition();
+    this.isSupported = this.detection.supported;
+    this.isListening = false;
+  }
 
-  try {
-    const response = await fetch('http://127.0.0.1:8000/chat/history', {
-      method: 'GET',
-      headers: { 
-        'Authorization': `Bearer ${token}`, 
-        'Content-Type': 'application/json' 
-      },
-    });
+  startListening() {
+    if (!this.isSupported) {
+      this.onError(`Speech recognition not available: ${this.detection.reason}`);
+      return;
+    }
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        setBackendAvailable(false);
-        console.warn('Chat history endpoints not found. Using local storage.');
-        return;
+    if (this.isListening) {
+      this.stopListening();
+    }
+
+    try {
+      this.recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      this.recognition.continuous = false;
+      this.recognition.interimResults = true;
+      this.recognition.lang = 'en-US';
+      this.recognition.maxAlternatives = 1;
+
+      // Add grammar for better accuracy (optional)
+      if (window.SpeechGrammarList) {
+        const grammar = '#JSGF V1.0; grammar ocean; public <query> = show me | display | analyze | compare | find | what are | temperature | salinity | pressure | float | argo | profile | map | trend | anomaly;';
+        const speechRecognitionList = new (window.SpeechGrammarList || window.webkitSpeechGrammarList)();
+        speechRecognitionList.addFromString(grammar, 1);
+        this.recognition.grammars = speechRecognitionList;
       }
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
 
-    const data = await response.json();
-    const mappedMessages = data.map(msg => ({
-      id: msg.id,
-      type: msg.sender === 'user' ? 'user' : 'bot',
-      content: msg.content,
-      timestamp: new Date(msg.timestamp),
-      viz_data: msg.viz_data || null,
-      viz_tab: msg.viz_tab || null
-    }));
+      this.recognition.onstart = () => {
+        this.isListening = true;
+        console.log('Voice recognition started');
+      };
 
-    setMessages(mappedMessages);
-    setBackendAvailable(true);
-  } catch (error) {
-    console.error('Error fetching chat history:', error);
-    setBackendAvailable(false);
-    // Fallback to local storage if backend fails
-    const fallback = localStorage.getItem('floatchat_messages');
-    if (fallback) {
-      setMessages(JSON.parse(fallback));
+      this.recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        if (interimTranscript) {
+          this.onTranscript(interimTranscript, false);
+        }
+
+        if (finalTranscript) {
+          this.onTranscript(finalTranscript, true);
+        }
+      };
+
+      this.recognition.onerror = (event) => {
+        this.isListening = false;
+        let errorMessage = 'Speech recognition error';
+        
+        switch (event.error) {
+          case 'no-speech':
+            errorMessage = 'No speech detected. Try speaking louder.';
+            break;
+          case 'audio-capture':
+            errorMessage = 'Microphone access denied. Please allow microphone access.';
+            break;
+          case 'not-allowed':
+            errorMessage = 'Microphone permission denied. Please enable microphone access.';
+            break;
+          case 'network':
+            errorMessage = 'Network error. Please check your internet connection.';
+            break;
+          case 'service-not-allowed':
+            errorMessage = 'Speech service not available. Please check your browser settings.';
+            break;
+          case 'aborted':
+            errorMessage = 'Speech recognition was aborted.';
+            break;
+          default:
+            errorMessage = `Speech recognition error: ${event.error}`;
+        }
+        
+        console.error('Speech recognition error:', event.error);
+        this.onError(errorMessage);
+      };
+
+      this.recognition.onend = () => {
+        this.isListening = false;
+        console.log('Voice recognition ended');
+        this.onEnd();
+      };
+
+      this.recognition.start();
+      
+    } catch (error) {
+      console.error('Failed to initialize speech recognition:', error);
+      this.onError('Failed to initialize speech recognition: ' + error.message);
     }
   }
-};
 
-// Save message to backend (with fallback)
-const saveMessageToBackend = async (token, messageData, setBackendAvailable) => {
-  if (!token) return;
-
-  try {
-    const response = await fetch('http://127.0.0.1:8000/chat/history', {
-      method: 'POST',
-      headers: { 
-        'Authorization': `Bearer ${token}`, 
-        'Content-Type': 'application/json' 
-      },
-      body: JSON.stringify({
-        sender: messageData.type === 'user' ? 'user' : 'bot',
-        content: messageData.content,
-        viz_data: messageData.viz_data || null,
-        viz_tab: messageData.viz_tab || null
-      }),
-    });
-
-    if (!response.ok) {
-      if (response.status === 404) {
-        setBackendAvailable(false);
-        console.warn('Chat history POST endpoint not found. Using local storage.');
-        return;
-      }
-      throw new Error(`HTTP error! status: ${response.status}`);
+  stopListening() {
+    if (this.recognition && this.isListening) {
+      this.recognition.stop();
+      this.isListening = false;
     }
-    return await response.json();
-  } catch (error) {
-    console.error('Error saving message:', error);
-    setBackendAvailable(false);
-    throw error;
   }
-};
+
+  destroy() {
+    this.stopListening();
+    this.recognition = null;
+  }
+}
 
 // Handle Enter key press in textarea
-const handleKeyPress = (event, handleSendMessage) => {
+function handleKeyPress(event) {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
     handleSendMessage();
   }
-};
+}
 
 // Handle file input change
-const handleFileChange = (event) => {
+function handleFileChange(event) {
   const file = event.target.files && event.target.files[0];
   if (file) {
     console.log('Selected file:', file.name);
   }
-};
+}
 
 const FloatChat = () => {
   const navigate = useNavigate();
   
-  // Get auth token
-  const token = getAuthToken();
-  const isAuthenticated = !!token;
-  
-  // Backend availability state
-  const [backendAvailable, setBackendAvailable] = useState(true);
-  
-  // Restore state from localStorage if available (only for unauthenticated users or if backend unavailable)
+  // Restore state from localStorage if available
   const getInitialState = (key, fallback) => {
-    if (isAuthenticated && backendAvailable) return fallback; // Don't use localStorage for auth users with working backend
     try {
       const stored = localStorage.getItem(key);
       if (stored) return JSON.parse(stored);
     } catch {}
     return fallback;
   };
-  
+
   const [messages, setMessages] = useState(() => getInitialState('floatchat_messages', []));
   const [lastVizData, setLastVizData] = useState(() => getInitialState('floatchat_lastVizData', null));
   const [lastVizTab, setLastVizTab] = useState(() => getInitialState('floatchat_lastVizTab', null));
   const [inputText, setInputText] = useState(() => getInitialState('floatchat_inputText', ''));
   const [isRecording, setIsRecording] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  const [darkMode, setDarkMode] = useState(() => {
-    try {
-      return localStorage.getItem('darkMode') === 'true';
-    } catch {
-      return true;
-    }
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState('idle'); // 'idle', 'listening', 'processing', 'error', 'requesting'
+  const [voiceEnabled, setVoiceEnabled] = useState(() => {
+    return getInitialState('floatchat_voiceEnabled', false);
   });
   
-  const [chatHistory] = useState([
+  // Voice support detection
+  const [voiceSupport, setVoiceSupport] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
+  const [chatHistory, setChatHistory] = useState([
     { id: 1, title: "Ocean temperature analysis", snippet: "Show me temperature profiles...", date: "Today", starred: false },
     { id: 2, title: "Salinity data Arabian Sea", snippet: "Compare salinity levels in...", date: "Yesterday", starred: true },
     { id: 3, title: "ARGO float trajectories", snippet: "Display float paths for...", date: "2 days ago", starred: false },
     { id: 4, title: "BGC parameter analysis", snippet: "Analyze bio-geo-chemical...", date: "1 week ago", starred: false }
   ]);
 
+  // Voice recognition instance
+  const voiceInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // Initialize voice support detection
+  useEffect(() => {
+    const detection = detectSpeechRecognition();
+    setVoiceSupport(detection);
+    console.log('Voice support detection:', detection);
+  }, []);
+
+  // Initialize voice recognition
+  useEffect(() => {
+    if (!voiceSupport?.supported) return;
+
+    const voiceInput = new VoiceInput(
+      (transcript, isFinal) => {
+        setInputText(prev => {
+          if (isFinal) {
+            return transcript;
+          } else {
+            return prev ? prev + ' ' + transcript : transcript;
+          }
+        });
+        
+        setTimeout(() => {
+          inputRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 0);
+      },
+      (error) => {
+        console.error('Voice recognition error:', error);
+        setVoiceStatus('error');
+        setTimeout(() => setVoiceStatus('idle'), 3000);
+      },
+      () => {
+        setIsVoiceActive(false);
+        setVoiceStatus('idle');
+      }
+    );
+
+    voiceInputRef.current = voiceInput;
+
+    return () => {
+      voiceInput.destroy();
+    };
+  }, [voiceSupport]);
+
+  // Persist chat state to localStorage on change
+  useEffect(() => {
+    localStorage.setItem('floatchat_messages', JSON.stringify(messages));
+  }, [messages]);
+
+  useEffect(() => {
+    localStorage.setItem('floatchat_lastVizData', JSON.stringify(lastVizData));
+  }, [lastVizData]);
+
+  useEffect(() => {
+    localStorage.setItem('floatchat_lastVizTab', JSON.stringify(lastVizTab));
+  }, [lastVizTab]);
+
+  useEffect(() => {
+    localStorage.setItem('floatchat_inputText', JSON.stringify(inputText));
+  }, [inputText]);
+
+  // Persist voice enabled state
+  useEffect(() => {
+    if (voiceSupport?.supported) {
+      localStorage.setItem('floatchat_voiceEnabled', JSON.stringify(voiceEnabled));
+    }
+  }, [voiceEnabled, voiceSupport]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -234,213 +338,150 @@ const FloatChat = () => {
 
   useEffect(scrollToBottom, [messages]);
 
-  // Check backend availability and load chat history on mount for authenticated users
-  useEffect(() => {
-    const initializeChat = async () => {
-      if (isAuthenticated && token) {
-        setIsLoadingHistory(true);
-        // First check if endpoints exist
-        const endpointsAvailable = await checkChatHistoryEndpoints(token);
-        setBackendAvailable(endpointsAvailable);
-        
-        if (endpointsAvailable) {
-          await fetchChatHistory(token, setMessages, setBackendAvailable);
-        } else {
-          // Fallback to local storage
-          const fallback = localStorage.getItem('floatchat_messages');
-          if (fallback) {
-            setMessages(JSON.parse(fallback));
-          }
-        }
-        setIsLoadingHistory(false);
-      }
-    };
-
-    initializeChat();
-  }, [token]);
-
-  // Persist chat state to localStorage only when not using backend
-  useEffect(() => { 
-    if (!isAuthenticated || !backendAvailable) {
-      localStorage.setItem('floatchat_messages', JSON.stringify(messages));
+  // Voice recording functions
+  const toggleVoiceRecording = () => {
+    if (!voiceSupport?.supported || !voiceInputRef.current?.isSupported) {
+      setVoiceStatus('error');
+      return;
     }
-  }, [messages, isAuthenticated, backendAvailable]);
-  
-  useEffect(() => { 
-    if (!isAuthenticated || !backendAvailable) {
-      localStorage.setItem('floatchat_lastVizData', JSON.stringify(lastVizData));
-    }
-  }, [lastVizData, isAuthenticated, backendAvailable]);
-  
-  useEffect(() => { 
-    if (!isAuthenticated || !backendAvailable) {
-      localStorage.setItem('floatchat_lastVizTab', JSON.stringify(lastVizTab));
-    }
-  }, [lastVizTab, isAuthenticated, backendAvailable]);
-  
-  useEffect(() => { 
-    if (!isAuthenticated || !backendAvailable) {
-      localStorage.setItem('floatchat_inputText', JSON.stringify(inputText));
-    }
-  }, [inputText, isAuthenticated, backendAvailable]);
 
-  // Persist dark mode
-  useEffect(() => {
-    localStorage.setItem('darkMode', darkMode);
-  }, [darkMode]);
-
-  const toggleRecording = () => {
-    setIsRecording(!isRecording);
-    if (!isRecording) {
-      setTimeout(() => {
-        setInputText("Show me temperature profiles in the Indian Ocean for the last month");
-        setIsRecording(false);
-      }, 2000);
+    if (isVoiceActive) {
+      voiceInputRef.current.stopListening();
+      setIsVoiceActive(false);
+      setVoiceStatus('idle');
+      setIsRecording(false);
+    } else {
+      setIsVoiceActive(true);
+      setVoiceStatus('listening');
+      setIsRecording(true);
+      setInputText('');
+      
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(() => {
+          voiceInputRef.current.startListening();
+        })
+        .catch((err) => {
+          console.error('Microphone access denied:', err);
+          setVoiceStatus('error');
+          setIsVoiceActive(false);
+          setIsRecording(false);
+          setTimeout(() => setVoiceStatus('idle'), 3000);
+        });
     }
   };
+
+  // Enable voice input
+  const enableVoiceInput = () => {
+    if (!voiceSupport?.supported) {
+      setVoiceStatus('error');
+      return;
+    }
+
+    setVoiceStatus('requesting');
+    
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(() => {
+        setVoiceEnabled(true);
+        setVoiceStatus('idle');
+      })
+      .catch((err) => {
+        console.error('Microphone permission denied:', err);
+        setVoiceStatus('error');
+        setTimeout(() => setVoiceStatus('idle'), 5000);
+      });
+  };
+
+  // Auto-send when voice input is finalized and has content
+  useEffect(() => {
+    if (inputText.trim() && !isVoiceActive && voiceStatus === 'idle' && isRecording) {
+      const timer = setTimeout(() => {
+        if (inputText.trim() && voiceStatus === 'idle') {
+          handleSendMessage();
+        }
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [inputText, isVoiceActive, voiceStatus, isRecording]);
 
   const handleFileUpload = () => {
     fileInputRef.current?.click();
   };
 
-  const handleSendMessage = async () => {
+  const handleSendMessage = () => {
     if (inputText.trim() === '') return;
 
     const userMessage = {
-      id: `temp-${Date.now()}`, // Temporary ID for optimistic update
+      id: Date.now(),
       type: 'user',
       content: inputText,
-      timestamp: new Date(),
-      isOptimistic: true
+      timestamp: new Date()
     };
 
-    // Optimistic update: show user message immediately
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
     setIsTyping(true);
+    setIsRecording(false);
+    setVoiceStatus('idle');
 
-    // Save user message to backend if authenticated and backend available
-    if (isAuthenticated && token && backendAvailable) {
-      try {
-        await saveMessageToBackend(token, userMessage, setBackendAvailable);
-      } catch (error) {
-        console.error('Error saving user message:', error);
-        // Remove optimistic message on error (if backend fails)
-        if (error.message.includes('404')) {
-          setBackendAvailable(false);
-          setMessages(prev => prev.filter(msg => msg.id !== userMessage.id));
-          setIsTyping(false);
-          return;
-        }
-      }
-    }
-
-    // Add thinking message
-    const thinkingMessageId = `temp-thinking-${Date.now()}`;
-    const thinkingBotMessage = {
-      id: thinkingMessageId,
-      type: 'bot',
-      content: `🤔 Thinking... Analyzing your ocean data query: "${inputText}"\n\nProcessing ARGO float database...`,
-      timestamp: new Date(),
-      isOptimistic: true
-    };
-    setMessages(prev => [...prev, thinkingBotMessage]);
-
-    // Fetch real backend response for AI
-    let apiResponse = null;
-    let apiError = null;
-
-    try {
-      const { default: axios } = await import('axios');
-      const config = token ? {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      } : {
-        headers: { 'Content-Type': 'application/json' }
+    setTimeout(() => {
+      const cannedBotMessage = {
+        id: Date.now() + 1,
+        type: 'bot',
+        content: `🔍 Processing your query: "${inputText.substring(0, 50)}${inputText.length > 50 ? '...' : ''}"\n\nI'll analyze this using our ARGO float database and generate the appropriate ocean data visualizations.`,
+        timestamp: new Date()
       };
+      setMessages(prev => [...prev, cannedBotMessage]);
 
-      const endpoint = token ? 'http://127.0.0.1:8000/chat/query' : 'http://127.0.0.1:8000/chat';
-      const res = await axios.post(endpoint, { query: inputText }, config);
-      apiResponse = res;
-    } catch (error) {
-      console.error('AI API call failed:', error);
-      apiError = error;
-    }
+      import('axios').then(({ default: axios }) => {
+        axios.post('http://127.0.0.1:8000/chat/query', { query: inputText })
+          .then(res => {
+            let backendMsg = '';
+            let vizData = null;
+            let vizTab = null;
 
-    let backendMsg = '';
-    let vizData = null;
-    let vizTab = null;
+            if (Array.isArray(res.data)) {
+              backendMsg = res.data[0] || 'No response from backend.';
+              vizData = res.data[1] || null;
+            } else if (typeof res.data === 'object') {
+              backendMsg = res.data.message || res.data.answer || 'No response from backend.';
+              vizData = res.data.data || null;
+            } else {
+              backendMsg = String(res.data);
+            }
 
-    if (apiError) {
-      backendMsg = '⚠️ Sorry, I encountered an error processing your request. Please try again.';
-    } else {
-      // Support both array and object responses
-      if (Array.isArray(apiResponse.data)) {
-        backendMsg = apiResponse.data[0] || 'No response from backend.';
-        vizData = apiResponse.data[1] || null;
-      } else if (typeof apiResponse.data === 'object') {
-        backendMsg = apiResponse.data.message || apiResponse.data.answer || 'No response from backend.';
-        vizData = apiResponse.data.data || null;
-      } else {
-        backendMsg = String(apiResponse.data);
-      }
+            if (vizData && vizData.type) {
+              if (vizData.type.includes('profile')) vizTab = 'plots';
+              else if (vizData.type.includes('map')) vizTab = 'map';
+              else if (vizData.type.includes('comparison')) vizTab = 'comparison';
+              else if (vizData.type.includes('table')) vizTab = 'table';
+            }
 
-      // Heuristic: set tab type based on vizData.type
-      if (vizData && vizData.type) {
-        if (vizData.type.includes('profile')) vizTab = 'plots';
-        else if (vizData.type.includes('map')) vizTab = 'map';
-        else if (vizData.type.includes('comparison')) vizTab = 'comparison';
-        else if (vizData.type.includes('table')) vizTab = 'table';
-      }
+            setLastVizData(vizData);
+            setLastVizTab(vizTab);
+            
+            const finalBotMessage = {
+              id: Date.now() + 2,
+              type: 'bot',
+              content: backendMsg,
+              timestamp: new Date(),
+              hasVisualization: !!vizData
+            };
 
-      setLastVizData(vizData);
-      setLastVizTab(vizTab);
-
-      // Save bot response to backend if authenticated and backend available
-      if (isAuthenticated && token && backendAvailable) {
-        const botMessageData = {
-          id: `temp-bot-${Date.now()}`,
-          type: 'bot',
-          content: backendMsg,
-          timestamp: new Date(),
-          viz_data: vizData,
-          viz_tab: vizTab
-        };
-        try {
-          await saveMessageToBackend(token, botMessageData, setBackendAvailable);
-        } catch (error) {
-          console.error('Error saving bot message:', error);
-          if (error.message.includes('404')) {
-            setBackendAvailable(false);
-          }
-        }
-      }
-    }
-
-    // Replace thinking message with actual response
-    setMessages(prev => prev.map(msg => 
-      msg.id === thinkingMessageId 
-        ? { 
-            ...msg, 
-            id: `bot-${Date.now()}`, // Give it a stable ID
-            content: backendMsg,
-            viz_data: vizData,
-            viz_tab: vizTab,
-            isOptimistic: false
-          }
-        : msg
-    ));
-
-    setIsTyping(false);
-
-    // Refetch complete history from backend to ensure consistency (only if backend is available)
-    if (isAuthenticated && token && backendAvailable) {
-      setTimeout(() => {
-        fetchChatHistory(token, setMessages, setBackendAvailable);
-      }, 500);
-    }
+            setMessages(prev => [...prev, finalBotMessage]);
+          })
+          .catch(err => {
+            console.error('Backend error:', err);
+            setMessages(prev => [...prev, {
+              id: Date.now() + 2,
+              type: 'bot',
+              content: '⚠️ Sorry, I encountered an error while processing your request. Please try again or check your connection.',
+              timestamp: new Date()
+            }]);
+          })
+          .finally(() => setIsTyping(false));
+      });
+    }, 1000);
   };
 
   const samplePrompts = [
@@ -471,7 +512,7 @@ const FloatChat = () => {
     bg: darkMode ? 'bg-gray-900' : 'bg-white',
     sidebarBg: darkMode ? 'bg-gray-800' : 'bg-gray-50',
     cardBg: darkMode ? 'bg-gray-800' : 'bg-white',
-    cardHoverBg: darkMode ? 'bg-gray-700' : 'bg-white',
+    cardHoverBg: darkMode ? 'bg-gray-700' : 'bg-gray-100',
     promptBg: darkMode ? 'bg-gray-800' : 'bg-gray-50',
     promptHoverBg: darkMode ? 'bg-gray-700' : 'bg-gray-100',
     text: darkMode ? 'text-white' : 'text-gray-900',
@@ -487,20 +528,73 @@ const FloatChat = () => {
     buttonHoverBg: darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-100'
   };
 
-  // Show loading screen while fetching history
-  if (isAuthenticated && isLoadingHistory) {
-    return (
-      <div className={`h-screen ${themeClasses.bg} flex items-center justify-center`}>
-        <div className="flex flex-col items-center space-y-4">
-          <div className="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
-          <p className={`text-lg ${themeClasses.text}`}>Loading your chat history...</p>
-        </div>
-      </div>
-    );
-  }
+  // Voice status styling
+  const getVoiceButtonClasses = () => {
+    if (voiceStatus === 'error') {
+      return 'bg-red-500 text-white animate-pulse';
+    } else if (isVoiceActive) {
+      return 'bg-gradient-to-r from-purple-500 to-pink-500 text-white animate-pulse';
+    } else if (!voiceEnabled && voiceStatus !== 'requesting' && voiceSupport?.supported) {
+      return `${themeClasses.textMuted} opacity-50 cursor-not-allowed`;
+    } else {
+      return `${themeClasses.textMuted} hover:text-purple-500 ${themeClasses.buttonHoverBg}`;
+    }
+  };
 
-  // Show backend unavailable warning
-  const showBackendWarning = isAuthenticated && !backendAvailable;
+  const getVoiceIcon = () => {
+    if (voiceStatus === 'error') {
+      return <X className="w-5 h-5" />;
+    } else if (isVoiceActive) {
+      return <Mic className="w-5 h-5" />;
+    } else if (!voiceEnabled) {
+      return <MicOff className="w-5 h-5" />;
+    } else {
+      return <MicOff className="w-5 h-5" />;
+    }
+  };
+
+  const isMicDisabled = () => {
+    return !voiceEnabled || !voiceSupport?.supported || !voiceInputRef.current?.isSupported || voiceStatus === 'requesting';
+  };
+
+  // Get voice support message
+  const getVoiceSupportMessage = () => {
+    if (!voiceSupport) return null;
+    
+    if (!voiceSupport.supported) {
+      if (voiceSupport.reason === 'insecure-context') {
+        return (
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 mt-3">
+            <div className="flex items-start space-x-2">
+              <Info className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" />
+              <div className="text-sm">
+                <p className={`${themeClasses.textSecondary}`}>
+                  🔒 Voice input requires a secure connection (HTTPS). 
+                  For development, you can use <code className="bg-yellow-200 dark:bg-yellow-800/50 px-1 py-0.5 rounded text-xs font-mono">localhost</code> or deploy to HTTPS.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      } else {
+        return (
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mt-3">
+            <div className="flex items-start space-x-2">
+              <Info className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+              <div className="text-sm">
+                <p className={`${themeClasses.textSecondary}`}>
+                  💬 Voice input works best in Chrome, Edge, and Safari. 
+                  Firefox has limited support. You can still use typing for all ocean data queries!
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      }
+    }
+    
+    return null;
+  };
 
   return (
     <div className={`h-screen ${themeClasses.bg} flex relative transition-colors duration-200`}>
@@ -513,22 +607,10 @@ const FloatChat = () => {
         className="hidden"
       />
 
-      {/* Backend Unavailable Warning Banner */}
-      {showBackendWarning && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-yellow-100 border-b border-yellow-300 dark:bg-yellow-900 dark:border-yellow-700">
-          <div className="max-w-4xl mx-auto px-4 py-2 flex items-center space-x-2">
-            <AlertCircle className="w-4 h-4 text-yellow-700 dark:text-yellow-300" />
-            <span className="text-sm text-yellow-800 dark:text-yellow-200">
-              Chat history endpoints not found. Using local storage as fallback.
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* Sidebar */}
       <div
         className={`
-          fixed inset-y-0 left-0 z-50 ${showBackendWarning ? 'lg:top-12' : ''}
+          fixed inset-y-0 left-0 z-50
           ${sidebarOpen ? 'w-80' : 'w-16'}
           ${themeClasses.sidebarBg} ${themeClasses.border} border-r
           transition-all duration-300 ease-in-out
@@ -548,12 +630,7 @@ const FloatChat = () => {
             {sidebarOpen && (
               <div>
                 <h1 className={`text-lg font-semibold ${themeClasses.text}`}>FloatChat</h1>
-                <p className={`text-xs ${themeClasses.textMuted}`}>
-                  {isAuthenticated 
-                    ? (backendAvailable ? 'ARGO Data Discovery' : 'ARGO Data Discovery (Local)')
-                    : 'ARGO Data Discovery (Guest)'
-                  }
-                </p>
+                <p className={`text-xs ${themeClasses.textMuted}`}>ARGO Data Discovery</p>
               </div>
             )}
           </div>
@@ -576,35 +653,18 @@ const FloatChat = () => {
               ${!sidebarOpen ? 'justify-center' : ''}
               hover:scale-105
             `}
-            onClick={async () => {
-              if (isAuthenticated && token && backendAvailable) {
-                // For authenticated users with working backend, clear backend history
-                try {
-                  await fetch('http://127.0.0.1:8000/chat/history', {
-                    method: 'DELETE',
-                    headers: { 
-                      'Authorization': `Bearer ${token}`, 
-                      'Content-Type': 'application/json' 
-                    },
-                  });
-                  await fetchChatHistory(token, setMessages, setBackendAvailable);
-                } catch (err) {
-                  console.error('Error clearing chat history:', err);
-                  if (err.message.includes('404')) {
-                    setBackendAvailable(false);
-                  }
-                }
-              } else {
-                // For guest users or backend unavailable, clear local state
-                setMessages([]);
-                setInputText('');
-                setLastVizData(null);
-                setLastVizTab(null);
-                localStorage.removeItem('floatchat_messages');
-                localStorage.removeItem('floatchat_lastVizData');
-                localStorage.removeItem('floatchat_lastVizTab');
-                localStorage.removeItem('floatchat_inputText');
-              }
+            onClick={() => {
+              setMessages([]);
+              setInputText('');
+              setLastVizData(null);
+              setLastVizTab(null);
+              setIsVoiceActive(false);
+              setVoiceStatus('idle');
+              setIsRecording(false);
+              localStorage.removeItem('floatchat_messages');
+              localStorage.removeItem('floatchat_lastVizData');
+              localStorage.removeItem('floatchat_lastVizTab');
+              localStorage.removeItem('floatchat_inputText');
             }}
           >
             <Edit3 className="w-5 h-5" />
@@ -659,13 +719,13 @@ const FloatChat = () => {
       {/* Sidebar Overlay */}
       {sidebarOpen && (
         <div 
-          className={`fixed inset-0 bg-black bg-opacity-25 z-40 lg:hidden ${showBackendWarning ? 'top-12' : ''}`}
+          className="fixed inset-0 bg-black bg-opacity-25 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* Main Content */}
-      <div className={`flex-1 flex flex-col ${showBackendWarning ? 'lg:pt-12' : ''}`}>
+      <div className="flex-1 flex flex-col">
         {/* Header */}
         <div className={`${themeClasses.bg} ${themeClasses.borderLight} border-b px-4 py-3 flex items-center justify-between`}>
           <div className="flex items-center space-x-3">
@@ -708,10 +768,60 @@ const FloatChat = () => {
                 <h1 className={`text-4xl font-bold ${themeClasses.text} mb-4`}>
                   Hello, I'm FloatChat
                 </h1>
-                <p className={`text-xl ${themeClasses.textSecondary} max-w-2xl mx-auto`}>
-                  Your AI assistant for discovering and analyzing ARGO ocean data. 
-                  Ask me anything about temperature, salinity, BGC parameters, or float trajectories.
+                <p className={`text-xl ${themeClasses.textSecondary} max-w-2xl mx-auto mb-6`}>
+                  Your AI assistant for discovering and analyzing ARGO ocean data.
                 </p>
+                
+                <div className="flex flex-col sm:flex-row justify-center items-center space-y-2 sm:space-y-0 sm:space-x-4 text-sm mb-4">
+                  <span className={`${themeClasses.textMuted}`}>💬 Type your query or</span>
+                  
+                  {voiceSupport?.supported ? (
+                    voiceEnabled ? (
+                      <button
+                        onClick={toggleVoiceRecording}
+                        className={`inline-flex items-center space-x-1 px-3 py-1 rounded-lg ${getVoiceButtonClasses()} transition-colors`}
+                      >
+                        <Mic className="w-4 h-4" />
+                        <span className="font-medium">Speak</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={enableVoiceInput}
+                        className="inline-flex items-center space-x-1 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={voiceStatus === 'requesting'}
+                      >
+                        {voiceStatus === 'requesting' ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <span>Enabling...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Mic className="w-4 h-4" />
+                            <span>Enable Voice</span>
+                          </>
+                        )}
+                      </button>
+                    )
+                  ) : (
+                    <button
+                      className="inline-flex items-center space-x-1 px-3 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-lg cursor-not-allowed"
+                      disabled
+                    >
+                      <MicOff className="w-4 h-4" />
+                      <span className="font-medium">Voice Unavailable</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Voice Support Info */}
+                {getVoiceSupportMessage()}
+                
+                {!voiceEnabled && voiceSupport?.supported && (
+                  <p className={`text-xs ${themeClasses.textMuted} mt-2 max-w-md mx-auto`}>
+                    🔒 Voice input is disabled by default for privacy. Click "Enable Voice" to allow microphone access for hands-free ocean data queries.
+                  </p>
+                )}
               </div>
 
               {/* Sample Prompts */}
@@ -739,10 +849,9 @@ const FloatChat = () => {
             /* Chat Messages */
             <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
               {messages.map((message, idx) => {
-                const isLastBotMsg =
-                  message.type === 'bot' &&
-                  idx === messages.length - 1 &&
-                  (/check the visualization|view the chart|see the data|open dashboard/i.test(message.content) || message.viz_data);
+                const isLastBotMsg = message.type === 'bot' && 
+                  idx === messages.length - 1 && 
+                  (message.hasVisualization || /visualization|chart|plot|map|graph/i.test(message.content));
                 
                 return (
                   <div key={message.id} className={`flex items-start space-x-4 ${message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
@@ -761,16 +870,16 @@ const FloatChat = () => {
                             : `${themeClasses.botMessageBg} ${themeClasses.text}`
                         }`}>
                           <p className="whitespace-pre-wrap m-0">{message.content}</p>
-                          {isLastBotMsg && message.viz_data && (
+                          {isLastBotMsg && lastVizData && (
                             <button
                               onClick={() => {
                                 navigate('/dashboard', {
-                                  state: { vizData: message.viz_data, vizTab: message.viz_tab }
+                                  state: { vizData: lastVizData, vizTab: lastVizTab }
                                 });
                               }}
                               className="mt-4 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl shadow hover:scale-105 transition font-semibold text-sm"
                             >
-                              View Visualization
+                              📊 View Visualization
                             </button>
                           )}
                         </div>
@@ -797,13 +906,10 @@ const FloatChat = () => {
                     <Sparkles className="w-4 h-4 text-white" />
                   </div>
                   <div className={`${themeClasses.botMessageBg} p-4 rounded-2xl`}>
-                    <div className="flex items-center space-x-3">
-                      <Loader2 className={`w-4 h-4 ${themeClasses.textMuted} animate-spin`} />
-                      <div className="flex space-x-2">
-                        <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`}></div>
-                        <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.1s' }}></div>
-                        <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.2s' }}></div>
-                      </div>
+                    <div className="flex space-x-2">
+                      <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`}></div>
+                      <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.1s' }}></div>
+                      <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.2s' }}></div>
                     </div>
                   </div>
                 </div>
@@ -822,55 +928,77 @@ const FloatChat = () => {
                   ref={inputRef}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  onKeyPress={(e) => handleKeyPress(e, handleSendMessage)}
-                  placeholder="Ask FloatChat about ocean data..."
-                  className={`flex-1 bg-transparent border-none resize-none focus:outline-none placeholder-gray-500 ${themeClasses.text}`}
+                  onKeyPress={handleKeyPress}
+                  placeholder={isVoiceActive ? "🎤 Listening... Speak your ocean data query" : !voiceSupport?.supported ? "Ask FloatChat about ocean data..." : !voiceEnabled ? "Ask FloatChat about ocean data... (Enable voice input above)" : "Ask FloatChat about ocean data... or tap the mic to speak"}
+                  className={`flex-1 bg-transparent border-none resize-none focus:outline-none placeholder-gray-500 ${themeClasses.text} ${
+                    isVoiceActive ? 'border-l-2 border-purple-400 pl-3' : ''
+                  }`}
                   rows={1}
                   style={{
                     minHeight: '24px',
                     maxHeight: '200px',
                     resize: 'none'
                   }}
-                  disabled={isTyping}
+                  disabled={isVoiceActive}
                 />
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={handleFileUpload}
-                    disabled={isTyping}
-                    className={`p-2 rounded-full transition-colors ${themeClasses.textMuted} hover:text-gray-600 ${themeClasses.buttonHoverBg} ${isTyping ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`p-2 rounded-full transition-colors ${themeClasses.textMuted} hover:text-gray-600 ${themeClasses.buttonHoverBg}`}
                     title="Upload ARGO data file"
                   >
                     <Paperclip className="w-5 h-5" />
                   </button>
                   <button
-                    onClick={toggleRecording}
-                    disabled={isTyping}
-                    className={`p-2 rounded-full transition-colors ${
-                      isRecording 
-                        ? 'bg-red-500 text-white animate-pulse' 
-                        : `${themeClasses.textMuted} hover:text-gray-600 ${themeClasses.buttonHoverBg}`
-                    } ${isTyping ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    onClick={voiceSupport?.supported ? (voiceEnabled ? toggleVoiceRecording : enableVoiceInput) : null}
+                    disabled={isMicDisabled()}
+                    className={`p-2 rounded-full transition-all duration-200 ${getVoiceButtonClasses()} disabled:opacity-50 disabled:cursor-not-allowed`}
+                    title={isVoiceActive ? "Stop listening" : !voiceSupport?.supported ? "Voice not supported in this browser" : !voiceEnabled ? "Enable voice input first" : "Start voice input"}
                   >
-                    {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    {getVoiceIcon()}
                   </button>
                   <button
                     onClick={handleSendMessage}
-                    disabled={inputText.trim() === '' || isTyping}
-                    className={`p-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-full transition-colors ${isTyping ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    disabled={inputText.trim() === '' || isVoiceActive}
+                    className={`p-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-full transition-colors ${
+                      inputText.trim() !== '' && !isVoiceActive ? 'animate-pulse' : ''
+                    }`}
                   >
                     <Send className="w-5 h-5" />
                   </button>
                 </div>
               </div>
+              
+              {/* Voice Status Indicator */}
+              {voiceStatus === 'listening' && (
+                <div className="flex items-center justify-center mt-2 space-x-2">
+                  <div className="w-2 h-2 bg-purple-500 rounded-full animate-ping"></div>
+                  <span className={`text-xs ${themeClasses.textSecondary}`}>
+                    🎤 Listening... Speak clearly about ocean data queries
+                  </span>
+                </div>
+              )}
+              
+              {voiceStatus === 'error' && (
+                <div className="flex items-center justify-center mt-2">
+                  <span className={`text-xs text-red-500`}>
+                    ❌ Microphone access required. Please allow access and try again.
+                  </span>
+                </div>
+              )}
+              
+              {voiceStatus === 'requesting' && (
+                <div className="flex items-center justify-center mt-2">
+                  <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mr-2"></div>
+                  <span className={`text-xs ${themeClasses.textSecondary}`}>
+                    Requesting microphone permission...
+                  </span>
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-center mt-3">
               <p className={`text-xs ${themeClasses.textMuted}`}>
-                {isAuthenticated 
-                  ? (backendAvailable 
-                      ? 'FloatChat can make mistakes. Consider checking important ocean data insights.' 
-                      : 'Chat history endpoints not found. Using local storage.')
-                  : 'Guest mode: Your chat history will not be saved.'
-                }
+                {isVoiceActive ? '🎤 Voice input active - speak your query!' : !voiceSupport?.supported ? '💬 FloatChat works great with typing too!' : !voiceEnabled ? '🔒 Voice input disabled. Click the mic icon to enable microphone access.' : 'FloatChat can make mistakes. Consider checking important ocean data insights.'}
               </p>
             </div>
           </div>
