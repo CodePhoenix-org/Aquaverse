@@ -24,7 +24,7 @@ def verify_password(currpassword: str, hashedpassword: str) -> bool:
     return pwd_context.verify(currpassword, hashedpassword)
 
 # Create JWT token
-def create_access_token(data: dict, expires_minutes: int = 60):
+def create_access_token(data: dict, expires_minutes: int = 120):
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)  
     to_encode.update({"exp": expire})

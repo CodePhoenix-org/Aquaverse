@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -28,7 +27,8 @@ import {
   Sparkles,
   Moon,
   Sun,
-  Paperclip
+  Paperclip,
+  Info
 } from 'lucide-react';
 
 // Inject custom scrollbar styles globally (only once)
@@ -57,6 +57,157 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// Enhanced Speech Recognition Detection
+const detectSpeechRecognition = () => {
+  if (typeof window === 'undefined') return false;
+  
+  // Check if running on secure context (required for SpeechRecognition)
+  const isSecureContext = window.isSecureContext || 
+    (window.location.protocol === 'https:' || window.location.hostname === 'localhost');
+  
+  if (!isSecureContext) {
+    console.warn('SpeechRecognition requires HTTPS or localhost');
+    return { supported: false, reason: 'insecure-context' };
+  }
+
+  const SpeechRecognition = 
+    window.SpeechRecognition || 
+    window.webkitSpeechRecognition || 
+    window.mozSpeechRecognition || 
+    window.msSpeechRecognition;
+
+  const supported = !!SpeechRecognition;
+  
+  if (!supported) {
+    console.warn('SpeechRecognition API not supported in this browser');
+    return { supported: false, reason: 'not-supported' };
+  }
+
+  return { supported: true, reason: 'supported' };
+};
+
+// Speech Recognition Utility
+class VoiceInput {
+  constructor(onTranscript, onError, onEnd) {
+    this.recognition = null;
+    this.onTranscript = onTranscript;
+    this.onError = onError;
+    this.onEnd = onEnd;
+    this.detection = detectSpeechRecognition();
+    this.isSupported = this.detection.supported;
+    this.isListening = false;
+  }
+
+  startListening() {
+    if (!this.isSupported) {
+      this.onError(`Speech recognition not available: ${this.detection.reason}`);
+      return;
+    }
+
+    if (this.isListening) {
+      this.stopListening();
+    }
+
+    try {
+      this.recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      this.recognition.continuous = false;
+      this.recognition.interimResults = true;
+      this.recognition.lang = 'en-US';
+      this.recognition.maxAlternatives = 1;
+
+      // Add grammar for better accuracy (optional)
+      if (window.SpeechGrammarList) {
+        const grammar = '#JSGF V1.0; grammar ocean; public <query> = show me | display | analyze | compare | find | what are | temperature | salinity | pressure | float | argo | profile | map | trend | anomaly;';
+        const speechRecognitionList = new (window.SpeechGrammarList || window.webkitSpeechGrammarList)();
+        speechRecognitionList.addFromString(grammar, 1);
+        this.recognition.grammars = speechRecognitionList;
+      }
+
+      this.recognition.onstart = () => {
+        this.isListening = true;
+        console.log('Voice recognition started');
+      };
+
+      this.recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript;
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        if (interimTranscript) {
+          this.onTranscript(interimTranscript, false);
+        }
+
+        if (finalTranscript) {
+          this.onTranscript(finalTranscript, true);
+        }
+      };
+
+      this.recognition.onerror = (event) => {
+        this.isListening = false;
+        let errorMessage = 'Speech recognition error';
+        
+        switch (event.error) {
+          case 'no-speech':
+            errorMessage = 'No speech detected. Try speaking louder.';
+            break;
+          case 'audio-capture':
+            errorMessage = 'Microphone access denied. Please allow microphone access.';
+            break;
+          case 'not-allowed':
+            errorMessage = 'Microphone permission denied. Please enable microphone access.';
+            break;
+          case 'network':
+            errorMessage = 'Network error. Please check your internet connection.';
+            break;
+          case 'service-not-allowed':
+            errorMessage = 'Speech service not available. Please check your browser settings.';
+            break;
+          case 'aborted':
+            errorMessage = 'Speech recognition was aborted.';
+            break;
+          default:
+            errorMessage = `Speech recognition error: ${event.error}`;
+        }
+        
+        console.error('Speech recognition error:', event.error);
+        this.onError(errorMessage);
+      };
+
+      this.recognition.onend = () => {
+        this.isListening = false;
+        console.log('Voice recognition ended');
+        this.onEnd();
+      };
+
+      this.recognition.start();
+      
+    } catch (error) {
+      console.error('Failed to initialize speech recognition:', error);
+      this.onError('Failed to initialize speech recognition: ' + error.message);
+    }
+  }
+
+  stopListening() {
+    if (this.recognition && this.isListening) {
+      this.recognition.stop();
+      this.isListening = false;
+    }
+  }
+
+  destroy() {
+    this.stopListening();
+    this.recognition = null;
+  }
+}
+
 // Handle Enter key press in textarea
 function handleKeyPress(event) {
   if (event.key === 'Enter' && !event.shiftKey) {
@@ -64,18 +215,18 @@ function handleKeyPress(event) {
     handleSendMessage();
   }
 }
+
 // Handle file input change
 function handleFileChange(event) {
   const file = event.target.files && event.target.files[0];
   if (file) {
-    // You can add file processing logic here, e.g., upload or parse
-    // For now, just log the file name
     console.log('Selected file:', file.name);
   }
 }
 
 const FloatChat = () => {
   const navigate = useNavigate();
+  
   // Restore state from localStorage if available
   const getInitialState = (key, fallback) => {
     try {
@@ -84,11 +235,20 @@ const FloatChat = () => {
     } catch {}
     return fallback;
   };
+
   const [messages, setMessages] = useState(() => getInitialState('floatchat_messages', []));
   const [lastVizData, setLastVizData] = useState(() => getInitialState('floatchat_lastVizData', null));
   const [lastVizTab, setLastVizTab] = useState(() => getInitialState('floatchat_lastVizTab', null));
   const [inputText, setInputText] = useState(() => getInitialState('floatchat_inputText', ''));
   const [isRecording, setIsRecording] = useState(false);
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState('idle'); // 'idle', 'listening', 'processing', 'error', 'requesting'
+  const [voiceEnabled, setVoiceEnabled] = useState(() => {
+    return getInitialState('floatchat_voiceEnabled', false);
+  });
+  
+  // Voice support detection
+  const [voiceSupport, setVoiceSupport] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [darkMode, setDarkMode] = useState(true);
@@ -98,23 +258,79 @@ const FloatChat = () => {
     { id: 3, title: "ARGO float trajectories", snippet: "Display float paths for...", date: "2 days ago", starred: false },
     { id: 4, title: "BGC parameter analysis", snippet: "Analyze bio-geo-chemical...", date: "1 week ago", starred: false }
   ]);
+
+  // Voice recognition instance
+  const voiceInputRef = useRef(null);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  // Initialize voice support detection
+  useEffect(() => {
+    const detection = detectSpeechRecognition();
+    setVoiceSupport(detection);
+    console.log('Voice support detection:', detection);
+  }, []);
+
+  // Initialize voice recognition
+  useEffect(() => {
+    if (!voiceSupport?.supported) return;
+
+    const voiceInput = new VoiceInput(
+      (transcript, isFinal) => {
+        setInputText(prev => {
+          if (isFinal) {
+            return transcript;
+          } else {
+            return prev ? prev + ' ' + transcript : transcript;
+          }
+        });
+        
+        setTimeout(() => {
+          inputRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }, 0);
+      },
+      (error) => {
+        console.error('Voice recognition error:', error);
+        setVoiceStatus('error');
+        setTimeout(() => setVoiceStatus('idle'), 3000);
+      },
+      () => {
+        setIsVoiceActive(false);
+        setVoiceStatus('idle');
+      }
+    );
+
+    voiceInputRef.current = voiceInput;
+
+    return () => {
+      voiceInput.destroy();
+    };
+  }, [voiceSupport]);
+
   // Persist chat state to localStorage on change
   useEffect(() => {
     localStorage.setItem('floatchat_messages', JSON.stringify(messages));
   }, [messages]);
+
   useEffect(() => {
     localStorage.setItem('floatchat_lastVizData', JSON.stringify(lastVizData));
   }, [lastVizData]);
+
   useEffect(() => {
     localStorage.setItem('floatchat_lastVizTab', JSON.stringify(lastVizTab));
   }, [lastVizTab]);
+
   useEffect(() => {
     localStorage.setItem('floatchat_inputText', JSON.stringify(inputText));
   }, [inputText]);
-  
-  const messagesEndRef = useRef(null);
-  const inputRef = useRef(null);
-  const fileInputRef = useRef(null);
+
+  // Persist voice enabled state
+  useEffect(() => {
+    if (voiceSupport?.supported) {
+      localStorage.setItem('floatchat_voiceEnabled', JSON.stringify(voiceEnabled));
+    }
+  }, [voiceEnabled, voiceSupport]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -122,15 +338,71 @@ const FloatChat = () => {
 
   useEffect(scrollToBottom, [messages]);
 
-  const toggleRecording = () => {
-    setIsRecording(!isRecording);
-    if (!isRecording) {
-      setTimeout(() => {
-        setInputText("Show me temperature profiles in the Indian Ocean for the last month");
-        setIsRecording(false);
-      }, 2000);
+  // Voice recording functions
+  const toggleVoiceRecording = () => {
+    if (!voiceSupport?.supported || !voiceInputRef.current?.isSupported) {
+      setVoiceStatus('error');
+      return;
+    }
+
+    if (isVoiceActive) {
+      voiceInputRef.current.stopListening();
+      setIsVoiceActive(false);
+      setVoiceStatus('idle');
+      setIsRecording(false);
+    } else {
+      setIsVoiceActive(true);
+      setVoiceStatus('listening');
+      setIsRecording(true);
+      setInputText('');
+      
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(() => {
+          voiceInputRef.current.startListening();
+        })
+        .catch((err) => {
+          console.error('Microphone access denied:', err);
+          setVoiceStatus('error');
+          setIsVoiceActive(false);
+          setIsRecording(false);
+          setTimeout(() => setVoiceStatus('idle'), 3000);
+        });
     }
   };
+
+  // Enable voice input
+  const enableVoiceInput = () => {
+    if (!voiceSupport?.supported) {
+      setVoiceStatus('error');
+      return;
+    }
+
+    setVoiceStatus('requesting');
+    
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(() => {
+        setVoiceEnabled(true);
+        setVoiceStatus('idle');
+      })
+      .catch((err) => {
+        console.error('Microphone permission denied:', err);
+        setVoiceStatus('error');
+        setTimeout(() => setVoiceStatus('idle'), 5000);
+      });
+  };
+
+  // Auto-send when voice input is finalized and has content
+  useEffect(() => {
+    if (inputText.trim() && !isVoiceActive && voiceStatus === 'idle' && isRecording) {
+      const timer = setTimeout(() => {
+        if (inputText.trim() && voiceStatus === 'idle') {
+          handleSendMessage();
+        }
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [inputText, isVoiceActive, voiceStatus, isRecording]);
 
   const handleFileUpload = () => {
     fileInputRef.current?.click();
@@ -140,7 +412,7 @@ const FloatChat = () => {
     if (inputText.trim() === '') return;
 
     const userMessage = {
-      id: messages.length + 1,
+      id: Date.now(),
       type: 'user',
       content: inputText,
       timestamp: new Date()
@@ -149,26 +421,25 @@ const FloatChat = () => {
     setMessages(prev => [...prev, userMessage]);
     setInputText('');
     setIsTyping(true);
+    setIsRecording(false);
+    setVoiceStatus('idle');
 
-    // Show canned message first
     setTimeout(() => {
       const cannedBotMessage = {
-        id: messages.length + 2,
+        id: Date.now() + 1,
         type: 'bot',
-        content: `I'll analyze your ocean data query: "${inputText}"
-Based on our ARGO float database, I can help you explore temperature, salinity, and BGC parameters across different ocean regions. Let me process this request and generate the appropriate visualizations and insights.`,
+        content: `🔍 Processing your query: "${inputText.substring(0, 50)}${inputText.length > 50 ? '...' : ''}"\n\nI'll analyze this using our ARGO float database and generate the appropriate ocean data visualizations.`,
         timestamp: new Date()
       };
       setMessages(prev => [...prev, cannedBotMessage]);
 
-      // Now fetch real backend response
       import('axios').then(({ default: axios }) => {
-        axios.post('http://127.0.0.1:8000/chat', { query: inputText })
+        axios.post('http://127.0.0.1:8000/chat/query', { query: inputText })
           .then(res => {
-            // Support both array and object responses
             let backendMsg = '';
             let vizData = null;
             let vizTab = null;
+
             if (Array.isArray(res.data)) {
               backendMsg = res.data[0] || 'No response from backend.';
               vizData = res.data[1] || null;
@@ -178,34 +449,41 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
             } else {
               backendMsg = String(res.data);
             }
-            // Heuristic: set tab type based on vizData.type
+
             if (vizData && vizData.type) {
               if (vizData.type.includes('profile')) vizTab = 'plots';
               else if (vizData.type.includes('map')) vizTab = 'map';
               else if (vizData.type.includes('comparison')) vizTab = 'comparison';
               else if (vizData.type.includes('table')) vizTab = 'table';
             }
+
             setLastVizData(vizData);
             setLastVizTab(vizTab);
-            setMessages(prev => [...prev, {
-              id: prev.length + 1,
+            
+            const finalBotMessage = {
+              id: Date.now() + 2,
               type: 'bot',
               content: backendMsg,
-              timestamp: new Date()
-            }]);
+              timestamp: new Date(),
+              hasVisualization: !!vizData
+            };
+
+            setMessages(prev => [...prev, finalBotMessage]);
           })
           .catch(err => {
+            console.error('Backend error:', err);
             setMessages(prev => [...prev, {
-              id: prev.length + 1,
+              id: Date.now() + 2,
               type: 'bot',
-              content: '⚠️ Error fetching backend response.',
+              content: '⚠️ Sorry, I encountered an error while processing your request. Please try again or check your connection.',
               timestamp: new Date()
             }]);
           })
           .finally(() => setIsTyping(false));
       });
-    }, 1500);
+    }, 1000);
   };
+
   const samplePrompts = [
     {
       icon: <Globe className="w-5 h-5" />,
@@ -234,7 +512,7 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
     bg: darkMode ? 'bg-gray-900' : 'bg-white',
     sidebarBg: darkMode ? 'bg-gray-800' : 'bg-gray-50',
     cardBg: darkMode ? 'bg-gray-800' : 'bg-white',
-    cardHoverBg: darkMode ? 'bg-gray-700' : 'bg-white',
+    cardHoverBg: darkMode ? 'bg-gray-700' : 'bg-gray-100',
     promptBg: darkMode ? 'bg-gray-800' : 'bg-gray-50',
     promptHoverBg: darkMode ? 'bg-gray-700' : 'bg-gray-100',
     text: darkMode ? 'text-white' : 'text-gray-900',
@@ -248,6 +526,74 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
     botMessageBg: darkMode ? 'bg-gray-800' : 'bg-gray-50',
     hoverBg: darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100',
     buttonHoverBg: darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-100'
+  };
+
+  // Voice status styling
+  const getVoiceButtonClasses = () => {
+    if (voiceStatus === 'error') {
+      return 'bg-red-500 text-white animate-pulse';
+    } else if (isVoiceActive) {
+      return 'bg-gradient-to-r from-purple-500 to-pink-500 text-white animate-pulse';
+    } else if (!voiceEnabled && voiceStatus !== 'requesting' && voiceSupport?.supported) {
+      return `${themeClasses.textMuted} opacity-50 cursor-not-allowed`;
+    } else {
+      return `${themeClasses.textMuted} hover:text-purple-500 ${themeClasses.buttonHoverBg}`;
+    }
+  };
+
+  const getVoiceIcon = () => {
+    if (voiceStatus === 'error') {
+      return <X className="w-5 h-5" />;
+    } else if (isVoiceActive) {
+      return <Mic className="w-5 h-5" />;
+    } else if (!voiceEnabled) {
+      return <MicOff className="w-5 h-5" />;
+    } else {
+      return <MicOff className="w-5 h-5" />;
+    }
+  };
+
+  const isMicDisabled = () => {
+    return !voiceEnabled || !voiceSupport?.supported || !voiceInputRef.current?.isSupported || voiceStatus === 'requesting';
+  };
+
+  // Get voice support message
+  const getVoiceSupportMessage = () => {
+    if (!voiceSupport) return null;
+    
+    if (!voiceSupport.supported) {
+      if (voiceSupport.reason === 'insecure-context') {
+        return (
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 mt-3">
+            <div className="flex items-start space-x-2">
+              <Info className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" />
+              <div className="text-sm">
+                <p className={`${themeClasses.textSecondary}`}>
+                  🔒 Voice input requires a secure connection (HTTPS). 
+                  For development, you can use <code className="bg-yellow-200 dark:bg-yellow-800/50 px-1 py-0.5 rounded text-xs font-mono">localhost</code> or deploy to HTTPS.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      } else {
+        return (
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mt-3">
+            <div className="flex items-start space-x-2">
+              <Info className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
+              <div className="text-sm">
+                <p className={`${themeClasses.textSecondary}`}>
+                  💬 Voice input works best in Chrome, Edge, and Safari. 
+                  Firefox has limited support. You can still use typing for all ocean data queries!
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      }
+    }
+    
+    return null;
   };
 
   return (
@@ -312,7 +658,9 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
               setInputText('');
               setLastVizData(null);
               setLastVizTab(null);
-              // Also clear persisted state
+              setIsVoiceActive(false);
+              setVoiceStatus('idle');
+              setIsRecording(false);
               localStorage.removeItem('floatchat_messages');
               localStorage.removeItem('floatchat_lastVizData');
               localStorage.removeItem('floatchat_lastVizTab');
@@ -354,7 +702,6 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
 
         {/* Sidebar Footer */}
         <div className={`p-4 ${themeClasses.border} border-t space-y-2`}>
-          {/* Dashboard Button */}
           <button
             className={`w-full text-left p-3 ${themeClasses.cardHoverBg} rounded-xl flex items-center space-x-3 transition-colors ${themeClasses.textSecondary} ${!sidebarOpen ? 'justify-center' : ''}`}
             onClick={() => navigate('/dashboard')}
@@ -362,7 +709,6 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
             <BarChart3 className="w-5 h-5" />
             {sidebarOpen && <span>Dashboard</span>}
           </button>
-          {/* Settings Button */}
           <button className={`w-full text-left p-3 ${themeClasses.cardHoverBg} rounded-xl flex items-center space-x-3 transition-colors ${themeClasses.textSecondary} ${!sidebarOpen ? 'justify-center' : ''}`}>
             <Settings className="w-5 h-5" />
             {sidebarOpen && <span>Settings</span>}
@@ -411,7 +757,7 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
         </div>
 
         {/* Messages Area */}
-  <div className="flex-1 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           {messages.length === 0 ? (
             /* Welcome Screen */
             <div className="max-w-4xl mx-auto px-6 py-12">
@@ -422,10 +768,60 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
                 <h1 className={`text-4xl font-bold ${themeClasses.text} mb-4`}>
                   Hello, I'm FloatChat
                 </h1>
-                <p className={`text-xl ${themeClasses.textSecondary} max-w-2xl mx-auto`}>
-                  Your AI assistant for discovering and analyzing ARGO ocean data. 
-                  Ask me anything about temperature, salinity, BGC parameters, or float trajectories.
+                <p className={`text-xl ${themeClasses.textSecondary} max-w-2xl mx-auto mb-6`}>
+                  Your AI assistant for discovering and analyzing ARGO ocean data.
                 </p>
+                
+                <div className="flex flex-col sm:flex-row justify-center items-center space-y-2 sm:space-y-0 sm:space-x-4 text-sm mb-4">
+                  <span className={`${themeClasses.textMuted}`}>💬 Type your query or</span>
+                  
+                  {voiceSupport?.supported ? (
+                    voiceEnabled ? (
+                      <button
+                        onClick={toggleVoiceRecording}
+                        className={`inline-flex items-center space-x-1 px-3 py-1 rounded-lg ${getVoiceButtonClasses()} transition-colors`}
+                      >
+                        <Mic className="w-4 h-4" />
+                        <span className="font-medium">Speak</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={enableVoiceInput}
+                        className="inline-flex items-center space-x-1 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={voiceStatus === 'requesting'}
+                      >
+                        {voiceStatus === 'requesting' ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <span>Enabling...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Mic className="w-4 h-4" />
+                            <span>Enable Voice</span>
+                          </>
+                        )}
+                      </button>
+                    )
+                  ) : (
+                    <button
+                      className="inline-flex items-center space-x-1 px-3 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-lg cursor-not-allowed"
+                      disabled
+                    >
+                      <MicOff className="w-4 h-4" />
+                      <span className="font-medium">Voice Unavailable</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Voice Support Info */}
+                {getVoiceSupportMessage()}
+                
+                {!voiceEnabled && voiceSupport?.supported && (
+                  <p className={`text-xs ${themeClasses.textMuted} mt-2 max-w-md mx-auto`}>
+                    🔒 Voice input is disabled by default for privacy. Click "Enable Voice" to allow microphone access for hands-free ocean data queries.
+                  </p>
+                )}
               </div>
 
               {/* Sample Prompts */}
@@ -453,10 +849,10 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
             /* Chat Messages */
             <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
               {messages.map((message, idx) => {
-                const isLastBotMsg =
-                  message.type === 'bot' &&
-                  idx === messages.length - 1 &&
-                  /check the visualization/i.test(message.content);
+                const isLastBotMsg = message.type === 'bot' && 
+                  idx === messages.length - 1 && 
+                  (message.hasVisualization || /visualization|chart|plot|map|graph/i.test(message.content));
+                
                 return (
                   <div key={message.id} className={`flex items-start space-x-4 ${message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
@@ -474,16 +870,16 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
                             : `${themeClasses.botMessageBg} ${themeClasses.text}`
                         }`}>
                           <p className="whitespace-pre-wrap m-0">{message.content}</p>
-                          {isLastBotMsg && (
+                          {isLastBotMsg && lastVizData && (
                             <button
                               onClick={() => {
                                 navigate('/dashboard', {
-                                  state: lastVizData ? { vizData: lastVizData, vizTab: lastVizTab } : undefined
+                                  state: { vizData: lastVizData, vizTab: lastVizTab }
                                 });
                               }}
                               className="mt-4 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl shadow hover:scale-105 transition font-semibold text-sm"
                             >
-                              View Visualization
+                              📊 View Visualization
                             </button>
                           )}
                         </div>
@@ -533,14 +929,17 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Ask FloatChat about ocean data..."
-                  className={`flex-1 bg-transparent border-none resize-none focus:outline-none placeholder-gray-500 ${themeClasses.text}`}
+                  placeholder={isVoiceActive ? "🎤 Listening... Speak your ocean data query" : !voiceSupport?.supported ? "Ask FloatChat about ocean data..." : !voiceEnabled ? "Ask FloatChat about ocean data... (Enable voice input above)" : "Ask FloatChat about ocean data... or tap the mic to speak"}
+                  className={`flex-1 bg-transparent border-none resize-none focus:outline-none placeholder-gray-500 ${themeClasses.text} ${
+                    isVoiceActive ? 'border-l-2 border-purple-400 pl-3' : ''
+                  }`}
                   rows={1}
                   style={{
                     minHeight: '24px',
                     maxHeight: '200px',
                     resize: 'none'
                   }}
+                  disabled={isVoiceActive}
                 />
                 <div className="flex items-center space-x-2">
                   <button
@@ -551,28 +950,55 @@ Based on our ARGO float database, I can help you explore temperature, salinity, 
                     <Paperclip className="w-5 h-5" />
                   </button>
                   <button
-                    onClick={toggleRecording}
-                    className={`p-2 rounded-full transition-colors ${
-                      isRecording 
-                        ? 'bg-red-500 text-white animate-pulse' 
-                        : `${themeClasses.textMuted} hover:text-gray-600 ${themeClasses.buttonHoverBg}`
-                    }`}
+                    onClick={voiceSupport?.supported ? (voiceEnabled ? toggleVoiceRecording : enableVoiceInput) : null}
+                    disabled={isMicDisabled()}
+                    className={`p-2 rounded-full transition-all duration-200 ${getVoiceButtonClasses()} disabled:opacity-50 disabled:cursor-not-allowed`}
+                    title={isVoiceActive ? "Stop listening" : !voiceSupport?.supported ? "Voice not supported in this browser" : !voiceEnabled ? "Enable voice input first" : "Start voice input"}
                   >
-                    {isRecording ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    {getVoiceIcon()}
                   </button>
                   <button
                     onClick={handleSendMessage}
-                    disabled={inputText.trim() === ''}
-                    className="p-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-full transition-colors"
+                    disabled={inputText.trim() === '' || isVoiceActive}
+                    className={`p-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-full transition-colors ${
+                      inputText.trim() !== '' && !isVoiceActive ? 'animate-pulse' : ''
+                    }`}
                   >
                     <Send className="w-5 h-5" />
                   </button>
                 </div>
               </div>
+              
+              {/* Voice Status Indicator */}
+              {voiceStatus === 'listening' && (
+                <div className="flex items-center justify-center mt-2 space-x-2">
+                  <div className="w-2 h-2 bg-purple-500 rounded-full animate-ping"></div>
+                  <span className={`text-xs ${themeClasses.textSecondary}`}>
+                    🎤 Listening... Speak clearly about ocean data queries
+                  </span>
+                </div>
+              )}
+              
+              {voiceStatus === 'error' && (
+                <div className="flex items-center justify-center mt-2">
+                  <span className={`text-xs text-red-500`}>
+                    ❌ Microphone access required. Please allow access and try again.
+                  </span>
+                </div>
+              )}
+              
+              {voiceStatus === 'requesting' && (
+                <div className="flex items-center justify-center mt-2">
+                  <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mr-2"></div>
+                  <span className={`text-xs ${themeClasses.textSecondary}`}>
+                    Requesting microphone permission...
+                  </span>
+                </div>
+              )}
             </div>
             <div className="flex items-center justify-center mt-3">
               <p className={`text-xs ${themeClasses.textMuted}`}>
-                FloatChat can make mistakes. Consider checking important ocean data insights.
+                {isVoiceActive ? '🎤 Voice input active - speak your query!' : !voiceSupport?.supported ? '💬 FloatChat works great with typing too!' : !voiceEnabled ? '🔒 Voice input disabled. Click the mic icon to enable microphone access.' : 'FloatChat can make mistakes. Consider checking important ocean data insights.'}
               </p>
             </div>
           </div>

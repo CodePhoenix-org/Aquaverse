@@ -4,6 +4,7 @@ import axios from "axios";
 import { Eye, EyeOff, Mail, Lock, ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/Authcontext"; 
+import { toast } from "react-toastify"; 
 
 const LoginForm = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -33,14 +34,25 @@ const LoginForm = () => {
       // Update AuthContext
       login(userData);
 
-  navigate("/floatchat");
+      // ✅ Show success toast
+      toast.success("🎉 Login successful! Welcome back.", {
+        position: "top-right",
+        autoClose: 2500,
+      });
+
+      navigate("/floatchat");
     } catch (err) {
-      alert(err.response?.data?.detail || "Login failed!");
+      // ❌ Show error toast
+      toast.error(err.response?.data?.detail || "Login failed!", {
+        position: "top-right",
+        autoClose: 2500,
+      });
     }
   };
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {/* Email */}
       <div className="relative group">
         <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
         <input
@@ -60,6 +72,7 @@ const LoginForm = () => {
         )}
       </div>
 
+      {/* Password */}
       <div className="relative group">
         <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
         <input
@@ -86,6 +99,7 @@ const LoginForm = () => {
         )}
       </div>
 
+      {/* Submit */}
       <button
         type="submit"
         className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold rounded-xl shadow-lg transform hover:scale-105 transition-all flex items-center justify-center group"

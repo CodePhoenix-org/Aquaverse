@@ -1,45 +1,6 @@
-import hashlib
-
-# Global SQL cache (in-memory dictionary)
-sql_cache = {}
-
-def get_available_dates(db_uri: str) -> list:
-    """Get unique dates from argo_profiles table."""
-    try:
-        engine = create_engine(db_uri)
-        with engine.connect() as conn:
-            result = pd.read_sql("SELECT DISTINCT time::date FROM argo_profiles ORDER BY time", conn)
-            return result['time'].astype(str).tolist()
-    except Exception as e:
-        print(f"WARNING: Failed to get available dates: {e}")
-        return []  # Empty list if DB fails
-
-def get_dataset_stats(db_uri: str) -> str:
-    """Get overall min/max for temperature and salinity from the entire dataset."""
-    try:
-        sql = """
-        SELECT 
-            MIN(temperature) AS min_temp, MAX(temperature) AS max_temp,
-            MIN(salinity) AS min_sal, MAX(salinity) AS max_sal
-        FROM argo_profiles
-        """
-        engine = create_engine(db_uri)
-        df = pd.read_sql(text(sql), engine)
-        if not df.empty:
-            min_temp = df['min_temp'].iloc[0]
-            max_temp = df['max_temp'].iloc[0]
-            min_sal = df['min_sal'].iloc[0]
-            max_sal = df['max_sal'].iloc[0]
-            return (
-                f"temperatures ranging from ~{min_temp:.1f}°C to ~{max_temp:.1f}°C, "
-                f"salinity from ~{min_sal:.1f} to ~{max_sal:.1f} PSU"
-            )
-        return "temperature and salinity data"  # Generic fallback
-    except Exception as e:
-        print(f"WARNING: Failed to get dataset stats: {e}")
-        return "temperature and salinity data"
 import os
 import re
+import hashlib
 import traceback
 from typing import List, Dict, Tuple, Optional
 import pandas as pd
@@ -49,10 +10,15 @@ from sentence_transformers import SentenceTransformer
 import chromadb
 from chromadb.config import Settings
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from db.database import DB_URI
 from datetime import datetime
+
+# ------------------------------------------------------------
+# Global SQL cache
+# ------------------------------------------------------------
+sql_cache = {}
 
 # ------------------------------------------------------------
 # Paths and Environment
@@ -70,6 +36,56 @@ COLLECTION_NAME = "argo_summaries"
 
 if not DB_URI:
     raise ValueError("DB_URI not set in environment")
+
+# ------------------------------------------------------------
+# DB helpers
+# ------------------------------------------------------------
+def get_available_dates(db_uri: str) -> list:
+    """Get unique dates from argo_profiles table."""
+    try:
+        engine = create_engine(db_uri)
+        with engine.connect() as conn:
+            result = pd.read_sql("SELECT DISTINCT time::date FROM argo_profiles ORDER BY time", conn)
+            return result['time'].astype(str).tolist()
+    except Exception as e:
+        print(f"WARNING: Failed to get available dates: {e}")
+        return []
+
+
+def get_dataset_stats(db_uri: str) -> str:
+    """Get overall min/max for all parameters from dataset."""
+    try:
+        sql = """
+        SELECT 
+            MIN(temperature) AS min_temp, MAX(temperature) AS max_temp,
+            MIN(salinity) AS min_sal, MAX(salinity) AS max_sal,
+            MIN(chlorophyll) AS min_chl, MAX(chlorophyll) AS max_chl,
+            MIN(oxygen) AS min_o2, MAX(oxygen) AS max_o2
+        FROM argo_profiles
+        """
+        engine = create_engine(db_uri)
+        df = pd.read_sql(text(sql), engine)
+        if not df.empty:
+            stats = []
+            if pd.notna(df['min_temp'].iloc[0]):
+                stats.append(f"temperatures ranging from ~{df['min_temp'].iloc[0]:.1f}°C to ~{df['max_temp'].iloc[0]:.1f}°C")
+            if pd.notna(df['min_sal'].iloc[0]):
+                stats.append(f"salinity from ~{df['min_sal'].iloc[0]:.1f} to ~{df['max_sal'].iloc[0]:.1f} PSU")
+            if pd.notna(df['min_chl'].iloc[0]):
+                stats.append(f"chlorophyll from ~{df['min_chl'].iloc[0]:.3f} to ~{df['max_chl'].iloc[0]:.3f} mg/m³")
+            if pd.notna(df['min_o2'].iloc[0]):
+                stats.append(f"oxygen from ~{df['min_o2'].iloc[0]:.1f} to ~{df['max_o2'].iloc[0]:.1f} μmol/kg")
+            return ", ".join(stats) if stats else "oceanographic data"
+        return "oceanographic data"
+    except Exception as e:
+        print(f"WARNING: Failed to get dataset stats: {e}")
+        return "oceanographic data"
+
+
+def run_sql(sql: str) -> pd.DataFrame:
+    engine = create_engine(DB_URI)
+    with engine.connect() as conn:
+        return pd.read_sql(text(sql), conn)
 
 # ------------------------------------------------------------
 # ChromaDB helpers
@@ -103,11 +119,29 @@ def populate_chroma_if_empty(parquet_path: str, chroma_path: str, collection_nam
 
     for key, group in profiles:
         time, lat, lon = key
-        summary = (
-            f"Argo profile at {float(lat):.2f} lat, {float(lon):.2f} lon on {time}. "
-            f"Temperature range: {float(group['temperature'].min()):.1f}-{float(group['temperature'].max()):.1f}°C, "
-            f"Salinity mean: {float(group['salinity'].mean()):.1f} PSU"
-        )
+        summary_parts = [f"Argo profile at {float(lat):.2f} lat, {float(lon):.2f} lon on {time}."]
+        
+        # Add temperature info if available
+        if 'temperature' in group.columns:
+            temp_range = f"Temperature range: {float(group['temperature'].min()):.1f}-{float(group['temperature'].max()):.1f}°C"
+            summary_parts.append(temp_range)
+        
+        # Add salinity info if available
+        if 'salinity' in group.columns:
+            sal_mean = f"Salinity mean: {float(group['salinity'].mean()):.1f} PSU"
+            summary_parts.append(sal_mean)
+        
+        # Add chlorophyll info if available
+        if 'chlorophyll' in group.columns and group['chlorophyll'].notna().any():
+            chl_mean = f"Chlorophyll mean: {float(group['chlorophyll'].mean()):.3f} mg/m³"
+            summary_parts.append(chl_mean)
+        
+        # Add oxygen info if available
+        if 'oxygen' in group.columns and group['oxygen'].notna().any():
+            o2_mean = f"Oxygen mean: {float(group['oxygen'].mean()):.1f} μmol/kg"
+            summary_parts.append(o2_mean)
+        
+        summary = " ".join(summary_parts)
         ids.append(str(hash(key)))
         docs.append(summary)
 
@@ -118,35 +152,88 @@ def populate_chroma_if_empty(parquet_path: str, chroma_path: str, collection_nam
     return len(docs)
 
 # ------------------------------------------------------------
-# SQL helper
+# Parameter utilities
 # ------------------------------------------------------------
-def run_sql(sql: str) -> pd.DataFrame:
-    engine = create_engine(DB_URI)
-    with engine.connect() as conn:
-        return pd.read_sql(text(sql), conn)
+def get_parameter_unit(parameter: str) -> str:
+    """Return appropriate unit for each parameter"""
+    units = {
+        "temperature": "°C",
+        "salinity": " PSU",
+        "chlorophyll": " mg/m³",
+        "oxygen": " μmol/kg",
+        "pressure": " dbar",
+        "depth": " m"
+    }
+    return units.get(parameter, "")
+
+def detect_requested_parameter(query: str) -> Optional[str]:
+    """Detect which specific parameter is being requested"""
+    query_lower = query.lower()
+    
+    parameter_keywords = {
+        "chlorophyll": ["chlorophyll", "chl", "chla", "chl-a", "phytoplankton"],
+        "oxygen": ["oxygen", "o2", "dissolved oxygen", "do"],
+        "temperature": ["temperature", "temp", "sst", "sea surface temperature"],
+        "salinity": ["salinity", "sal", "salt", "psu"],
+        "pressure": ["pressure", "press", "depth pressure"],
+        "depth": ["depth", "bathymetry"]
+    }
+    
+    for param, keywords in parameter_keywords.items():
+        if any(keyword in query_lower for keyword in keywords):
+            return param
+    
+    return None
 
 # ------------------------------------------------------------
-# Enhanced Summarization helpers
+# Enhanced Stats helpers
 # ------------------------------------------------------------
 def extract_numeric_stats(df: pd.DataFrame) -> Tuple[str, Dict[str, Dict[str, float]]]:
-    """Extract numeric statistics from SQL results, handling both raw and aggregated data."""
+    """Enhanced stats extraction for all oceanographic parameters"""
     if df.empty:
         return "No data found.", {}
 
-    lower_map = {c.lower(): c for c in df.columns}
-    targets = ["temperature", "salinity"]
-    stats_out: Dict[str, Dict[str, float]] = {}
+    print(f"DEBUG: DataFrame shape: {df.shape}")
+    print(f"DEBUG: DataFrame columns: {list(df.columns)}")
+    print(f"DEBUG: DataFrame sample:\n{df.head()}")
 
-    for target in targets:
-        # Check for raw data column
-        if target in lower_map:
-            col = lower_map[target]
-            series = pd.to_numeric(df[col], errors="coerce").dropna()
-            if not series.empty:
-                stats_out[target] = {
-                    "min": round(float(series.min()), 1),
-                    "max": round(float(series.max()), 1),
-                    "mean": round(float(series.mean()), 1),
+    stats_out: Dict[str, Dict[str, float]] = {}
+    
+    # Define patterns for all oceanographic parameters
+    parameter_patterns = {
+        "temperature": ["temperature", "temp"],
+        "salinity": ["salinity", "sal"], 
+        "chlorophyll": ["chlorophyll", "chl", "chla", "chl_a"],
+        "oxygen": ["oxygen", "o2", "dissolved_oxygen"],
+        "pressure": ["pressure", "press"],
+        "depth": ["depth"]
+    }
+    
+    # Process each parameter type
+    for param_name, patterns in parameter_patterns.items():
+        # Find columns matching this parameter
+        param_cols = []
+        for pattern in patterns:
+            param_cols.extend([col for col in df.columns if pattern.lower() in col.lower()])
+        
+        # Remove duplicates while preserving order
+        param_cols = list(dict.fromkeys(param_cols))
+        print(f"DEBUG: Found {param_name} columns: {param_cols}")
+        
+        if param_cols:
+            param_data = []
+            for col in param_cols:
+                series = pd.to_numeric(df[col], errors="coerce").dropna()
+                print(f"DEBUG: Column {col} has {len(series)} valid numeric values")
+                if not series.empty:
+                    param_data.extend(series.values)
+            
+            if param_data:
+                stats_out[param_name] = {
+                    "min": round(float(min(param_data)), 3),
+                    "max": round(float(max(param_data)), 3),
+                    "mean": round(float(sum(param_data) / len(param_data)), 3),
+                    "count": len(param_data)
                 }
         else:
             # Check for aggregated columns (avg_salinity, min_salinity, max_salinity, etc.)
@@ -167,7 +254,7 @@ def extract_numeric_stats(df: pd.DataFrame) -> Tuple[str, Dict[str, Dict[str, fl
                             stats_out[target]["mean"] = round(float(series.mean()), 1)
 
     if not stats_out:
-        return "No valid temperature or salinity data.", {}
+        return "No valid oceanographic data found.", {}
 
     parts = []
     for name, s in stats_out.items():
@@ -182,313 +269,215 @@ def extract_numeric_stats(df: pd.DataFrame) -> Tuple[str, Dict[str, Dict[str, fl
 
 
 def extract_stats_from_docs(docs: List[str]) -> Tuple[str, Dict[str, Dict[str, float]]]:
-    """
-    Parse temperature ranges and salinity means from retrieved document texts
-    to build approximate stats when SQL results are not available.
-    """
+    """Enhanced document stats extraction for all parameters"""
     if not docs:
         return "No data found.", {}
 
-    temp_lows: List[float] = []
-    temp_highs: List[float] = []
-    sal_means: List[float] = []
-
-    # Fixed regex patterns - removed double backslashes
-    temp_re = re.compile(r"Temperature range:\s*([0-9]+(?:\.[0-9]+)?)\s*-\s*([0-9]+(?:\.[0-9]+)?)\s*°C", re.IGNORECASE)
-    sal_re = re.compile(r"Salinity mean:\s*([0-9]+(?:\.[0-9]+)?)\s*PSU", re.IGNORECASE)
+    temp_lows, temp_highs, sal_means, chl_means, o2_means = [], [], [], [], []
+    
+    # Regular expressions for different parameters
+    temp_re = re.compile(r"Temperature range:\s*([0-9.]+)\s*-\s*([0-9.]+)\s*°C", re.I)
+    sal_re = re.compile(r"Salinity mean:\s*([0-9.]+)\s*PSU", re.I)
+    chl_re = re.compile(r"Chlorophyll mean:\s*([0-9.]+)\s*mg/m³", re.I)
+    o2_re = re.compile(r"Oxygen mean:\s*([0-9.]+)\s*μmol/kg", re.I)
 
     for doc in docs:
+        # Extract temperature
         t = temp_re.search(doc)
         if t:
-            try:
-                temp_lows.append(float(t.group(1)))
-                temp_highs.append(float(t.group(2)))
-            except Exception:
-                pass
+            temp_lows.append(float(t.group(1)))
+            temp_highs.append(float(t.group(2)))
+        
+        # Extract salinity
         s = sal_re.search(doc)
         if s:
-            try:
-                sal_means.append(float(s.group(1)))
-            except Exception:
-                pass
+            sal_means.append(float(s.group(1)))
+        
+        # Extract chlorophyll
+        c = chl_re.search(doc)
+        if c:
+            chl_means.append(float(c.group(1)))
+        
+        # Extract oxygen
+        o = o2_re.search(doc)
+        if o:
+            o2_means.append(float(o.group(1)))
 
-    stats_map: Dict[str, Dict[str, float]] = {}
-    parts: List[str] = []
-
+    stats_map, parts = {}, []
+    
+    # Process temperature
     if temp_lows and temp_highs:
-        t_min = min(temp_lows)
-        t_max = max(temp_highs)
-        t_mean = (sum(temp_lows + temp_highs) / (len(temp_lows) + len(temp_highs)))
-        stats_map["temperature"] = {"min": round(t_min, 1), "max": round(t_max, 1), "mean": round(t_mean, 1)}
+        all_temps = temp_lows + temp_highs
+        stats_map["temperature"] = {
+            "min": round(min(temp_lows), 1),
+            "max": round(max(temp_highs), 1),
+            "mean": round(sum(all_temps) / len(all_temps), 1),
+        }
         t = stats_map["temperature"]
-        parts.append(f"temperature: min {t['min']}, max {t['max']}, avg {t['mean']}")
-
+        parts.append(f"temperature: min {t['min']}°C, max {t['max']}°C, avg {t['mean']}°C")
+    
+    # Process salinity
     if sal_means:
-        s_min = min(sal_means)
-        s_max = max(sal_means)
-        s_mean = sum(sal_means) / len(sal_means)
-        stats_map["salinity"] = {"min": round(s_min, 1), "max": round(s_max, 1), "mean": round(s_mean, 1)}
+        stats_map["salinity"] = {
+            "min": round(min(sal_means), 1),
+            "max": round(max(sal_means), 1),
+            "mean": round(sum(sal_means) / len(sal_means), 1),
+        }
         s = stats_map["salinity"]
-        parts.append(f"salinity: min {s['min']}, max {s['max']}, avg {s['mean']}")
+        parts.append(f"salinity: min {s['min']} PSU, max {s['max']} PSU, avg {s['mean']} PSU")
+    
+    # Process chlorophyll
+    if chl_means:
+        stats_map["chlorophyll"] = {
+            "min": round(min(chl_means), 3),
+            "max": round(max(chl_means), 3),
+            "mean": round(sum(chl_means) / len(chl_means), 3),
+        }
+        c = stats_map["chlorophyll"]
+        parts.append(f"chlorophyll: min {c['min']} mg/m³, max {c['max']} mg/m³, avg {c['mean']} mg/m³")
+    
+    # Process oxygen
+    if o2_means:
+        stats_map["oxygen"] = {
+            "min": round(min(o2_means), 1),
+            "max": round(max(o2_means), 1),
+            "mean": round(sum(o2_means) / len(o2_means), 1),
+        }
+        o = stats_map["oxygen"]
+        parts.append(f"oxygen: min {o['min']} μmol/kg, max {o['max']} μmol/kg, avg {o['mean']} μmol/kg")
 
     if not parts:
-        return "No valid temperature or salinity data.", {}
+        return "No valid oceanographic data found.", {}
 
     return "; ".join(parts), stats_map
 
-
-def create_enhanced_simple_summary_from_stats(stats_text: str, user_query: str) -> str:
-    """
-    Enhanced fallback summary when LLM is not available.
-    Creates more interpretive summaries rather than just listing numbers.
-    """
-    if "No valid" in stats_text or "No data" in stats_text:
-        return "No oceanographic data found matching your query."
-    
-    parts = []
-    water_mass_indicators = []
-    
-    # Parse temperature data
-    temp_match = re.search(r"temperature:\s*min\s*([\d.]+),\s*max\s*([\d.]+),\s*avg\s*([\d.]+)", stats_text.lower())
-    if temp_match:
-        min_t, max_t, avg_t = map(float, temp_match.groups())
-        temp_range = max_t - min_t
-        
-        if temp_range > 15:
-            parts.append(f"Water shows strong temperature stratification, ranging from {min_t}°C to {max_t}°C")
-            water_mass_indicators.append("mixed water column")
-        elif temp_range > 5:
-            parts.append(f"Moderate temperature variation from {min_t}°C to {max_t}°C (avg: {avg_t}°C)")
-            water_mass_indicators.append("some vertical mixing")
-        else:
-            parts.append(f"Relatively uniform temperature around {avg_t}°C")
-            water_mass_indicators.append("stable water mass")
-        
-        # Temperature classification
-        if avg_t > 25:
-            water_mass_indicators.append("tropical surface water")
-        elif avg_t > 15:
-            water_mass_indicators.append("temperate water")
-        elif avg_t > 5:
-            water_mass_indicators.append("cool water mass")
-        else:
-            water_mass_indicators.append("cold/deep water")
-    
-    # Parse salinity data
-    sal_match = re.search(r"salinity:\s*min\s*([\d.]+),\s*max\s*([\d.]+),\s*avg\s*([\d.]+)", stats_text.lower())
-    if sal_match:
-        min_s, max_s, avg_s = map(float, sal_match.groups())
-        sal_range = max_s - min_s
-        
-        if sal_range < 0.5:
-            parts.append(f"Salinity is very stable at {avg_s} PSU")
-        elif sal_range < 2.0:
-            parts.append(f"Salinity shows minor variation ({min_s}-{max_s} PSU)")
-        else:
-            parts.append(f"Salinity varies significantly from {min_s} to {max_s} PSU")
-            water_mass_indicators.append("water mass mixing")
-        
-        # Salinity classification
-        if avg_s > 35.5:
-            water_mass_indicators.append("high-salinity oceanic water")
-        elif avg_s > 34.5:
-            water_mass_indicators.append("typical oceanic conditions")
-        elif avg_s > 32:
-            water_mass_indicators.append("coastal influence detected")
-        else:
-            water_mass_indicators.append("freshwater influence")
-    
-    # Combine into meaningful summary
-    result = ". ".join(parts)
-    if water_mass_indicators:
-        unique_indicators = list(dict.fromkeys(water_mass_indicators))  # Remove duplicates while preserving order
-        result += f". This suggests {', '.join(unique_indicators[:2])}"  # Limit to 2 key indicators
-    
-    return result + "."
-# --- add this helper near the top with the other helpers ---
+# ------------------------------------------------------------
+# Output cleaning + Enhanced LLM summarizers
+# ------------------------------------------------------------
 def clean_llm_output(text: str) -> str:
-    """
-    Remove common wrapper tokens produced by some LLM chains such as:
-      <s> [OUT] ... [/OUT]
-    Keeps the inner content and strips whitespace.
-    """
     if not text:
         return text
-
     t = text.strip()
-
-    # Remove opening wrapper like: <s> [OUT] or <s>[OUT] or [OUT]
-    t = re.sub(r"^\s*(?:<s>\s*)?\[?OUT\]?\s*", "", t, flags=re.IGNORECASE)
-
-    # Remove closing wrapper like: [/OUT] or [/out] or [OUT]
-    t = re.sub(r"\s*(?:\[/?OUT\])\s*$", "", t, flags=re.IGNORECASE)
-
-    # Also remove any stray leading/trailing <s> or </s>
-    t = re.sub(r"^\s*<s>\s*|\s*</s>\s*$", "", t, flags=re.IGNORECASE)
-
+    t = re.sub(r"^\s*(?:<s>\s*)?\[?OUT\]?\s*", "", t, flags=re.I)
+    t = re.sub(r"\s*(?:\[/?OUT\])\s*$", "", t, flags=re.I)
+    t = re.sub(r"^\s*<s>\s*|\s*</s>\s*$", "", t, flags=re.I)
     return t.strip()
 
 
-# --- modify summarize_with_llm_from_stats to clean output ---
-def summarize_with_llm_from_stats(llm, stats_text: str, query: str) -> str:
-    """
-    Enhanced prompt template for creating meaningful oceanographic summaries
-    that focus on insights and interpretations rather than raw data repetition.
-    """
+def summarize_parameter_specific_data(llm, stats_text: str, query: str, parameter_focus: str = None) -> str:
+    """Enhanced summarization that focuses on the requested parameter"""
+    
+    # Detect the main parameter from the query if not provided
+    if not parameter_focus:
+        parameter_focus = detect_requested_parameter(query)
+    
+    if parameter_focus:
+        system_message = f"""You are an expert oceanographer. The user asked specifically about {parameter_focus}. 
+        Focus your response ONLY on {parameter_focus} data. Provide the specific numerical values with proper units and explain their oceanographic significance in 2-3 sentences.
+        Do not mention other parameters unless directly relevant to understanding {parameter_focus}."""
+    else:
+        system_message = """You are an expert oceanographer. Analyze the provided oceanographic data and give a concise summary focusing on the most relevant parameters for the user's query. Use proper units and explain the oceanographic significance."""
+    
     prompt = ChatPromptTemplate.from_messages([
-        ("system",
-         "You are an expert oceanographer communicating with the general public. "
-         "Your job is to interpret numeric oceanographic data and explain what it means "
-         "in terms of ocean conditions and patterns.\n\n"
-         "RULES:\n"
-         "• Transform statistics into meaningful insights\n"
-         "• Explain what temperature and salinity ranges indicate about water masses\n"
-         "• Identify if conditions are typical, extreme, or noteworthy\n"
-         "• Use accessible language - avoid technical jargon\n"
-         "• Focus on 'what this tells us' rather than listing numbers\n"
-         "• Keep response to 3-4 sentences maximum\n\n"
-         "CONTEXT GUIDELINES:\n"
-         "• Temperature ranges >10°C suggest mixing of different water masses\n"
-         "• Salinity >35 PSU indicates oceanic water; <34 PSU suggests coastal influence\n"
-         "• Stable salinity (variation <1 PSU) indicates uniform water mass\n"
-         "• Cold temperatures (<5°C) suggest deep water or polar regions\n"
-         "• Warm temperatures (>20°C) indicate surface tropical/subtropical water"),
-
-        ("user",
-         "USER QUESTION: {query}\n\n"
-         "STATISTICAL DATA: {stats}\n\n"
-         "Based on this data, provide a clear interpretation that answers:\n"
-         "1. What do these temperature conditions tell us about the water?\n"
-         "2. What does the salinity pattern indicate?\n"
-         "3. What type of ocean environment or water mass does this represent?\n\n"
-         "Write as if explaining to someone curious about ocean science but not an expert.")
+        ("system", system_message),
+        ("user", "User query: {query}\n\nData: {stats}\n\nProvide a focused response:")
     ])
-
+    
     chain = prompt | llm | StrOutputParser()
     raw = chain.invoke({"query": query, "stats": stats_text})
-    return clean_llm_output(raw).strip()
+    return clean_llm_output(raw)
 
 
-# --- modify create_context_summary_with_llm similarly ---
 def create_context_summary_with_llm(llm, context: str, query: str) -> str:
-    """
-    Enhanced context summarization when no numerical stats are available.
-    """
     prompt = ChatPromptTemplate.from_messages([
-        ("system",
-         "You are an oceanographic expert. Analyze the provided oceanographic profile data "
-         "and create a meaningful summary that identifies patterns, trends, and key insights. "
-         "Focus on what the data reveals about ocean conditions rather than listing individual measurements.\n\n"
-         "GUIDELINES:\n"
-         "• Identify geographical patterns (if multiple locations)\n"
-         "• Note temporal trends (if time series data)\n"
-         "• Describe water mass characteristics\n"
-         "• Highlight any unusual or notable conditions\n"
-         "• Keep language accessible to non-experts\n"
-         "• Limit to 3-4 sentences"),
-
-        ("user",
-         "USER QUERY: {query}\n\n"
-         "OCEANOGRAPHIC DATA:\n{context}\n\n"
-         "Provide a concise summary that explains what this data tells us about ocean conditions:")
+        ("system", "You are an oceanographic expert. Summarize data patterns in 3–4 sentences focusing on the user's specific request."),
+        ("user", "User query: {query}\n\nData:\n{context}")
     ])
-
     chain = prompt | llm | StrOutputParser()
     raw = chain.invoke({"query": query, "context": context})
-    return clean_llm_output(raw).strip()
-
-
-
+    return clean_llm_output(raw)
 
 # ------------------------------------------------------------
-# Alternative prompt templates for specific use cases
+# Enhanced SQL prompts
 # ------------------------------------------------------------
 def create_phenomenon_focused_prompt() -> ChatPromptTemplate:
-    """
-    Alternative prompt that focuses on identifying specific oceanographic phenomena.
-    """
     return ChatPromptTemplate.from_messages([
-        ("system",
-         "You are an oceanographic analyst. Interpret the statistical data to identify "
-         "specific ocean phenomena and water mass characteristics.\n\n"
-         
-         "PHENOMENA TO IDENTIFY:\n"
-         "• Thermoclines (sharp temperature gradients)\n"
-         "• Haloclines (sharp salinity gradients)\n" 
-         "• Water mass boundaries and mixing zones\n"
-         "• Upwelling/downwelling signatures\n"
-         "• Seasonal thermocline development\n"
-         "• Coastal vs oceanic water characteristics\n\n"
-         
-         "RESPONSE FORMAT:\n"
-         "1. Primary water mass type identified\n"
-         "2. Key oceanographic process or phenomenon\n"
-         "3. Confidence level and supporting evidence"),
-        
-        ("user",
-         "Query: {query}\n"
-         "Statistics: {stats}\n\n"
-         "What oceanographic phenomenon does this data represent?")
+        ("system", "Interpret oceanographic stats to identify thermoclines, haloclines, mixing zones, and biological patterns."),
+        ("user", "Query: {query}\n\nStats: {stats}")
+    ])
+
+
+def create_parameter_specific_sql_prompt() -> ChatPromptTemplate:
+    return ChatPromptTemplate.from_messages([
+        ("system", 
+         "You are a SQL expert for oceanographic data. Generate PostgreSQL queries for table argo_profiles. "
+         "The table has columns: time, latitude, longitude, pressure, temperature, salinity, depth, oxygen, chlorophyll. "
+         "IMPORTANT RULES: "
+         "1. When user asks for a specific parameter (like chlorophyll, oxygen, etc.), SELECT ONLY that parameter plus location/time columns "
+         "2. Do NOT include temperature and salinity unless specifically requested "
+         "3. For Indian Ocean: use latitude BETWEEN -40 AND 30 AND longitude BETWEEN 20 AND 120 "
+         "4. For other oceans, use appropriate lat/lon bounds "
+         "5. Always filter out NULL values for the requested parameter using WHERE column_name IS NOT NULL "
+         "6. Include recent data by adding ORDER BY time DESC LIMIT clause when appropriate"),
+        ("user", "Query: {query}\n\nContext: {context}\n\nGenerate SQL that focuses ONLY on the requested parameter:")
     ])
 
 
 def create_enhanced_sql_prompt() -> ChatPromptTemplate:
-    """
-    Enhanced SQL generation prompt with better oceanographic context.
-    """
+    """Fallback SQL prompt for general queries"""
     return ChatPromptTemplate.from_messages([
-        ("system", 
-         "You are a SQL expert specializing in oceanographic data analysis. "
-         "Generate efficient PostgreSQL queries for the argo_profiles table.\n\n"
-         
-         "TABLE SCHEMA:\n"
-         "argo_profiles(time, latitude, longitude, pressure, temperature, salinity)\n\n"
-         
-         "QUERY OPTIMIZATION TIPS:\n"
-         "• Use appropriate WHERE clauses for spatial/temporal filtering\n"
-         "• Include statistical functions (AVG, MIN, MAX, STDDEV) for summaries\n"
-         "• Consider pressure ranges for depth analysis\n"
-         "• Use LIMIT for large result sets\n"
-         "• Include ORDER BY for meaningful data organization\n\n"
-         
-         "Return ONLY the SQL query, no explanations."),
-        
-        ("user", 
-         "Context from vector search: {context}\n\n"
-         "User query: {query}\n\n"
-         "Generate a PostgreSQL SELECT query:")
+        ("system", "You are a SQL expert. Generate PostgreSQL queries for table argo_profiles. "
+         "The table has columns: time, latitude, longitude, pressure, temperature, salinity, depth, oxygen, chlorophyll. "
+         "Focus on the parameters most relevant to the user's query."),
+        ("user", "Context: {context}\n\nQuery: {query}\n\nGenerate SQL:")
     ])
 
-#fetching real data
-# Add this function to extract plot data from SQL results
-def extract_plot_data(df: pd.DataFrame, query_type: str) -> dict:
-    """Extract data suitable for plotting from DataFrame"""
+# ------------------------------------------------------------
+# Enhanced Plot data helper
+# ------------------------------------------------------------
+def extract_plot_data_enhanced(df: pd.DataFrame, query: str) -> dict:
+    """Enhanced plot data extraction for all parameters"""
     if df.empty:
         return None
     
     plot_data = {}
     
-    if "temperature" in df.columns and "pressure" in df.columns:
-        # Group by pressure/depth and calculate stats
-        depth_groups = df.groupby("pressure")["temperature"].agg(["mean", "min", "max"])
-        plot_data["temperature_profile"] = {
-            "depths": depth_groups.index.tolist(),
-            "values": depth_groups["mean"].tolist(),
-            "min": depth_groups["min"].tolist(),
-            "max": depth_groups["max"].tolist()
-        }
+    # Determine which parameters to plot based on query
+    requested_param = detect_requested_parameter(query)
+    target_params = [requested_param] if requested_param else ["temperature", "salinity", "chlorophyll", "oxygen"]
     
-    if "salinity" in df.columns and "pressure" in df.columns:
-        depth_groups = df.groupby("pressure")["salinity"].agg(["mean", "min", "max"])
-        plot_data["salinity_profile"] = {
-            "depths": depth_groups.index.tolist(),
-            "values": depth_groups["mean"].tolist(),
-            "min": depth_groups["min"].tolist(),
-            "max": depth_groups["max"].tolist()
-        }
+    # Create profiles for each target parameter
+    for param in target_params:
+        param_cols = [col for col in df.columns if param.lower() in col.lower()]
+        if param_cols and "pressure" in df.columns:
+            param_col = param_cols[0]  # Use first matching column
+            try:
+                # Group by pressure and calculate statistics
+                depth_groups = df.groupby("pressure")[param_col].agg(["mean", "min", "max"])
+                depth_groups = depth_groups.dropna()  # Remove NaN values
+                
+                if not depth_groups.empty:
+                    plot_data[f"{param}_profile"] = {
+                        "depths": depth_groups.index.tolist(),
+                        "values": depth_groups["mean"].tolist(),
+                        "min": depth_groups["min"].tolist(),
+                        "max": depth_groups["max"].tolist(),
+                        "unit": get_parameter_unit(param),
+                        "parameter": param
+                    }
+            except Exception as e:
+                print(f"DEBUG: Failed to create {param} profile: {e}")
     
-    return plot_data
+    return plot_data if plot_data else None
 
+
+def extract_plot_data(df: pd.DataFrame, query_type: str) -> dict:
+    """Legacy plot data function for backward compatibility"""
+    return extract_plot_data_enhanced(df, query_type)
+
+# ------------------------------------------------------------
+# Main Enhanced RAG query pipeline
+# ------------------------------------------------------------
 def rag_query(
     user_query: str,
     chroma_path: str = CHROMA_PATH,
@@ -496,18 +485,23 @@ def rag_query(
     db_uri: str = DB_URI,
     use_phenomenon_prompt: bool = False
 ) -> Tuple[str, Optional[Dict]]:
+    """Enhanced RAG query pipeline with parameter-specific handling"""
     try:
         print(f"DEBUG: Processing query: {user_query}")
-        
-        # Step 1: ChromaDB retrieval (for SQL context only)
+
+        # Step 1: Detect requested parameter
+        requested_param = detect_requested_parameter(user_query)
+        print(f"DEBUG: Detected parameter: {requested_param}")
+
+        # Step 2: Retrieve context from ChromaDB
         client = chromadb.PersistentClient(path=chroma_path)
         collection = client.get_collection(collection_name)
         results = collection.query(query_texts=[user_query], n_results=5)
         docs = results.get("documents", [[]])[0] if results else []
         context = "\n".join(docs) if docs else "No context found."
-        print(f"DEBUG: Retrieved {len(docs)} documents from ChromaDB")
+        print(f"DEBUG: Retrieved {len(docs)} docs from ChromaDB")
 
-        # Step 2: Initialize LLM
+        # Step 3: Initialize LLM
         llm = None
         if OPENROUTER_API_KEY:
             llm = ChatOpenAI(
@@ -517,9 +511,9 @@ def rag_query(
                 temperature=0.1,
                 max_tokens=512
             )
-            print("DEBUG: LLM initialized successfully")
+            print("DEBUG: LLM initialized")
 
-        # Step 3: SQL generation with caching
+        # Step 4: SQL generation with parameter-specific prompt
         df_result = pd.DataFrame()
         sql_cache_key = hashlib.md5(user_query.encode()).hexdigest()
         # If user query is salinity-focused, use hardcoded SQL
@@ -537,18 +531,18 @@ def rag_query(
         elif llm:
             if sql_cache_key in sql_cache:
                 sql = sql_cache[sql_cache_key]
-                print(f"DEBUG: Using cached SQL: {sql}")
+                print(f"DEBUG: Using cached SQL")
             else:
-                sql_prompt = create_enhanced_sql_prompt()  # Use updated prompt below
+                # Use parameter-specific SQL prompt
+                sql_prompt = create_parameter_specific_sql_prompt()
                 sql_chain = sql_prompt | llm | StrOutputParser()
                 sql_response = sql_chain.invoke({"query": user_query, "context": context}).strip()
-                sql_match = re.search(r"SELECT\s+.*?(?:;|$)", sql_response, re.IGNORECASE | re.DOTALL)
+                
+                # Extract SQL from response
+                sql_match = re.search(r"SELECT\s+.*?(?:;|$)", sql_response, re.I | re.S)
                 sql = (sql_match.group(0).rstrip(";") if sql_match else sql_response).strip()
-                # Adjust latitude for "near the equator" to match data (~8.8–9°N)
-                if "equator" in user_query.lower():
-                    sql = re.sub(r"latitude BETWEEN -5 AND 5", "latitude BETWEEN -10 AND 10", sql)
                 sql_cache[sql_cache_key] = sql
-                print(f"DEBUG: Generated and cached SQL: {sql}")
+                print(f"DEBUG: Generated SQL: {sql}")
 
         # Fix invalid dates dynamically
         available_dates = get_available_dates(db_uri)
@@ -634,95 +628,24 @@ def rag_query(
         # Step 5: Generate consistent response (only if SQL succeeded, no ChromaDB fallback for response)
         stats_text, stats_map = extract_numeric_stats(df_result)
         print(f"DEBUG: Stats text: {stats_text}")
-        print(f"DEBUG: Stats map: {stats_map}")
-        if stats_text != "No data found." and llm:
-            # Add location context to LLM summary
-            lat_range = (df_result['latitude'].min(), df_result['latitude'].max()) if 'latitude' in df_result.columns else (8.8, 9.0)
-            lon_range = (df_result['longitude'].min(), df_result['longitude'].max()) if 'longitude' in df_result.columns else (66.8, 68.0)
-            context_info = f"Data from tropical Indian Ocean (lat {lat_range[0]:.1f}–{lat_range[1]:.1f}°N, lon {lon_range[0]:.1f}–{lon_range[1]:.1f}°E)"
-            response_text = summarize_with_llm_from_stats(llm, f"{stats_text}. {context_info}", user_query)
-        elif stats_text != "No data found.":
-            response_text = create_enhanced_simple_summary_from_stats(stats_text, user_query)
+
+        # Step 7: Parameter-specific summarization
+        if stats_text not in ["No data found.", "No valid oceanographic data found."] and llm:
+            response_text = summarize_parameter_specific_data(llm, stats_text, user_query, requested_param)
+        elif stats_text not in ["No data found.", "No valid oceanographic data found."]:
+            response_text = f"Data summary: {stats_text}"
         else:
-            # No fallback to ChromaDB; clear message instead
-            available_dates = get_available_dates(db_uri)
-            dates_desc = f" ({' and '.join(available_dates)})" if available_dates else ""
-            response_text = (
-                f"No data matching your query in the dataset. "
-                f"Available data from 2025{dates_desc} shows {get_dataset_stats(db_uri)} in the tropical Indian Ocean (lat ~8.8–9°N, lon ~66.8–68°E). "
-                "Try rephrasing with specific dates like March 11, 2025, or locations near 9°N 68°E."
-            )
-        
-        if visualization_data:
-            response_text += " Check the visualization for detailed profiles."
-        else:
-            response_text += " No visualization available due to lack of matching data."
+            # If no data found in database, provide helpful message
+            if requested_param:
+                response_text = f"No {requested_param} data found in the current dataset for the specified region/time period. The dataset may not contain {requested_param} measurements for your query parameters."
+            else:
+                response_text = "No matching data found for your query in the current dataset."
+
+        # Step 8: Enhanced visualization
+        visualization_data = extract_plot_data_enhanced(df_result, user_query) if not df_result.empty else None
 
         return response_text, visualization_data
 
     except Exception as e:
-        print(f"ERROR in rag_query: {e}")
         traceback.print_exc()
-        return f"An error occurred: {str(e)}", None
-
-# ------------------------------------------------------------
-# Enhanced CLI interactive mode
-# ------------------------------------------------------------
-def main():
-    """
-    Enhanced main function with better user interaction.
-    """
-    try:
-        print("🌊 Setting up oceanographic data system...")
-        inserted = populate_chroma_if_empty(PARQUET_PATH, CHROMA_PATH, COLLECTION_NAME)
-        if inserted:
-            print(f"✅ Populated {inserted} documents into '{COLLECTION_NAME}'.")
-        else:
-            print(f"✅ ChromaDB already contains data.")
-    except Exception as e:
-        print(f"❌ ERROR: Failed to set up ChromaDB: {e}")
-        return
-
-    print("\n🔬 === Interactive Oceanographic RAG System ===")
-    print("Ask questions about ocean temperature, salinity, and water masses.")
-    print("Example queries:")
-    print("  • 'What are temperatures like in the tropical Pacific?'")
-    print("  • 'Show me salinity data from the Atlantic Ocean'")
-    print("  • 'Find cold water masses below 5 degrees'")
-    print("\nCommands: 'quit' to exit, 'help' for more examples")
-    print("-" * 60)
-    
-    while True:
-        try:
-            query = input("\n🌊 Query > ").strip()
-            
-            if query.lower() in ["quit", "exit", "q"]:
-                break
-            elif query.lower() == "help":
-                print("\n📚 Example Queries:")
-                print("  • Geographic: 'ocean data near 40°N 30°W'")
-                print("  • Temperature: 'warm water above 20 degrees'")
-                print("  • Salinity: 'high salinity regions'")
-                print("  • Depth: 'surface water conditions'")
-                print("  • Comparative: 'temperature differences in Atlantic vs Pacific'")
-                print("  • Temporal: 'seasonal temperature changes'")
-                continue
-            elif not query:
-                continue
-                
-            print("\n🔍 Processing...")
-            response = rag_query(query)
-            print(f"\n📊 Analysis:\n{response}\n")
-            print("-" * 40)
-            
-        except KeyboardInterrupt:
-            print("\n\n👋 Exiting...")
-            break
-        except Exception as e:
-            print(f"❌ Error processing query: {e}")
-
-    print("✅ Session ended. Thank you for exploring oceanographic data! 🌊")
-
-
-if __name__ == "__main__":
-    main()
+        return f"Error processing query: {e}", None

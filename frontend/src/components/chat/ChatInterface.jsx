@@ -45,7 +45,7 @@ const ChatInterface = ({ onDataReceived, onCloseChat }) => {
 
     try {
       // Send POST request to your backend API
-      const response = await axios.post('http://127.0.0.1:8000/chat', {
+      const response = await axios.post('http://127.0.0.1:8000/chat/query', {
         query: inputValue
       });
       // Debug: log full response
