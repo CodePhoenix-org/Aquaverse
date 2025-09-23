@@ -126,8 +126,7 @@ const ChatInterface = ({ onDataReceived, onCloseChat }) => {
           const isLastBotMsg = 
             message.type === 'bot' && 
             index === messages.length - 1 && 
-            lastVizData && 
-            /check the visualization|visualization|visualize|plot|chart|graph/i.test(message.content);
+            lastVizData;
           
           return (
             <div

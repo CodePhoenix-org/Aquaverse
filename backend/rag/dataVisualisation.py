@@ -166,24 +166,33 @@ def get_parameter_unit(parameter: str) -> str:
     }
     return units.get(parameter, "")
 
-def detect_requested_parameter(query: str) -> Optional[str]:
-    """Detect which specific parameter is being requested"""
+def detect_requested_parameter(query: str) -> List[str]:
+    """Detect which parameters are being requested - returns list of parameters"""
     query_lower = query.lower()
+    requested_params = []
     
     parameter_keywords = {
+        "temperature": ["temperature", "temp", "sst", "sea surface temperature", "thermal"],
+        "salinity": ["salinity", "sal", "salt", "psu"],
         "chlorophyll": ["chlorophyll", "chl", "chla", "chl-a", "phytoplankton"],
         "oxygen": ["oxygen", "o2", "dissolved oxygen", "do"],
-        "temperature": ["temperature", "temp", "sst", "sea surface temperature"],
-        "salinity": ["salinity", "sal", "salt", "psu"],
         "pressure": ["pressure", "press", "depth pressure"],
         "depth": ["depth", "bathymetry"]
     }
     
     for param, keywords in parameter_keywords.items():
         if any(keyword in query_lower for keyword in keywords):
-            return param
+            requested_params.append(param)
     
-    return None
+    # If no specific parameters mentioned, default to temperature and salinity
+    if not requested_params:
+        if "profile" in query_lower or "vertical" in query_lower:
+            requested_params = ["temperature", "salinity"]  # Default oceanographic profiles
+        else:
+            requested_params = ["temperature"]  # Default parameter
+    
+    print(f"DEBUG: Detected parameters: {requested_params}")
+    return requested_params
 
 # ------------------------------------------------------------
 # Enhanced Stats helpers
@@ -198,6 +207,8 @@ def extract_numeric_stats(df: pd.DataFrame) -> Tuple[str, Dict[str, Dict[str, fl
     print(f"DEBUG: DataFrame sample:\n{df.head()}")
 
     stats_out: Dict[str, Dict[str, float]] = {}
+    # Map lowercase column names to actual column names for case-insensitive lookup
+    lower_map = {col.lower(): col for col in df.columns}
     
     # Define patterns for all oceanographic parameters
     parameter_patterns = {
@@ -239,19 +250,19 @@ def extract_numeric_stats(df: pd.DataFrame) -> Tuple[str, Dict[str, Dict[str, fl
             # Check for aggregated columns (avg_salinity, min_salinity, max_salinity, etc.)
             agg_prefixes = ["avg_", "min_", "max_", "mean_"]
             for prefix in agg_prefixes:
-                agg_col = f"{prefix}{target}"
+                agg_col = f"{prefix}{param_name}"
                 if agg_col in lower_map:
                     col = lower_map[agg_col]
                     series = pd.to_numeric(df[col], errors="coerce").dropna()
                     if not series.empty:
-                        if target not in stats_out:
-                            stats_out[target] = {}
+                        if param_name not in stats_out:
+                            stats_out[param_name] = {}
                         if prefix == "min_":
-                            stats_out[target]["min"] = round(float(series.min()), 1)
+                            stats_out[param_name]["min"] = round(float(series.min()), 1)
                         elif prefix == "max_":
-                            stats_out[target]["max"] = round(float(series.max()), 1)
+                            stats_out[param_name]["max"] = round(float(series.max()), 1)
                         elif prefix in ["avg_", "mean_"]:
-                            stats_out[target]["mean"] = round(float(series.mean()), 1)
+                            stats_out[param_name]["mean"] = round(float(series.mean()), 1)
 
     if not stats_out:
         return "No valid oceanographic data found.", {}
@@ -516,18 +527,52 @@ def rag_query(
         # Step 4: SQL generation with parameter-specific prompt
         df_result = pd.DataFrame()
         sql_cache_key = hashlib.md5(user_query.encode()).hexdigest()
-        # If user query is salinity-focused, use hardcoded SQL
-        if "salinity" in user_query.lower():
+
+        # Detect what parameters user wants
+        requested_params = detect_requested_parameter(user_query)
+
+        # Build SQL based on requested parameters
+        if requested_params:
+            # Build SELECT clause with requested parameters
+            select_columns = ["pressure", "latitude", "longitude", "time"]
+            for param in requested_params:
+                if param in ["temperature", "salinity", "chlorophyll", "oxygen"]:
+                    select_columns.append(param)
+            select_clause = ", ".join(select_columns)
+
+            # Build WHERE clause
+            where_conditions = ["1=1"]  # Always true to start
+
+            # Add region constraints for Indian Ocean queries
+            if "indian" in user_query.lower() or "india" in user_query.lower():
+                where_conditions.append("longitude BETWEEN 20 AND 120")
+                where_conditions.append("latitude BETWEEN -40 AND 30")
+
+            # Add month constraints
+            month_mapping = {
+                "march": 3, "april": 4, "may": 5, "june": 6,
+                "july": 7, "august": 8, "september": 9, "october": 10,
+                "november": 11, "december": 12, "january": 1, "february": 2
+            }
+            for month_name, month_num in month_mapping.items():
+                if month_name in user_query.lower():
+                    where_conditions.append(f"EXTRACT(MONTH FROM time) = {month_num}")
+                    break
+
+            # Add NOT NULL conditions for requested parameters
+            for param in requested_params:
+                if param in ["temperature", "salinity", "chlorophyll", "oxygen"]:
+                    where_conditions.append(f"{param} IS NOT NULL")
+
+            where_clause = " AND ".join(where_conditions)
             sql = f"""
-            SELECT pressure, salinity, temperature, latitude, longitude
+            SELECT {select_clause}
             FROM argo_profiles
-            WHERE longitude BETWEEN 50 AND 100
-            AND latitude BETWEEN -30 AND 30
-            AND salinity IS NOT NULL
-            ORDER BY pressure
-            LIMIT 1000
+            WHERE {where_clause}
+            ORDER BY time DESC, pressure
+            LIMIT 2000
             """
-            print(f"DEBUG: Using salinity-focused query: {sql}")
+            print(f"DEBUG: Generated SQL: {sql}")
         elif llm:
             if sql_cache_key in sql_cache:
                 sql = sql_cache[sql_cache_key]
@@ -537,7 +582,6 @@ def rag_query(
                 sql_prompt = create_parameter_specific_sql_prompt()
                 sql_chain = sql_prompt | llm | StrOutputParser()
                 sql_response = sql_chain.invoke({"query": user_query, "context": context}).strip()
-                
                 # Extract SQL from response
                 sql_match = re.search(r"SELECT\s+.*?(?:;|$)", sql_response, re.I | re.S)
                 sql = (sql_match.group(0).rstrip(";") if sql_match else sql_response).strip()
@@ -568,62 +612,89 @@ def rag_query(
             print(f"WARNING: SQL execution failed: {e}")
             df_result = pd.DataFrame()
 
-        # Step 4: Visualization data (only if SQL succeeded)
+        # Enhanced visualization data creation
         visualization_data = None
         if not df_result.empty:
-            # Determine which parameters are available and should be visualized
-            available_params = []
             plot_data = {}
+            available_params = []
+            print(f"DEBUG: DataFrame columns: {df_result.columns.tolist()}")
+            print(f"DEBUG: DataFrame shape: {df_result.shape}")
+            print(f"DEBUG: Pressure values sample: {df_result['pressure'].head(10).tolist() if 'pressure' in df_result.columns else 'No pressure column'}")
 
+            # Process temperature data with proper aggregation
             if 'temperature' in df_result.columns and 'pressure' in df_result.columns:
-                print(f"DEBUG: Temperature range: {df_result['temperature'].min()} to {df_result['temperature'].max()}")
-                temp_by_depth = df_result.groupby('pressure')['temperature'].agg(['mean', 'min', 'max']).reset_index()
-                plot_data["temperature"] = {
-                    "depths": temp_by_depth['pressure'].tolist(),
-                    "values": temp_by_depth['mean'].tolist(),
-                    "min": temp_by_depth['min'].tolist(),
-                    "max": temp_by_depth['max'].tolist()
-                }
-                available_params.append("temperature")
+                temp_clean = df_result[['pressure', 'temperature']].dropna()
+                if not temp_clean.empty:
+                    temp_clean['pressure_rounded'] = temp_clean['pressure'].round().astype(int)
+                    temp_profile = temp_clean.groupby('pressure_rounded')['temperature'].agg(['mean', 'count']).reset_index()
+                    temp_profile = temp_profile[temp_profile['count'] > 0]
+                    if not temp_profile.empty:
+                        plot_data["temperature"] = {
+                            "depths": temp_profile['pressure_rounded'].tolist(),
+                            "values": temp_profile['mean'].tolist(),
+                            "title": "Temperature Profile - Indian Ocean",
+                            "yLabel": "Temperature (°C)",
+                            "color": "#ff6b6b"
+                        }
+                        available_params.append("temperature")
+                        print(f"DEBUG: Temperature profile created with {len(temp_profile)} depth points")
 
+            # Process salinity data with proper aggregation
             if 'salinity' in df_result.columns and 'pressure' in df_result.columns:
-                print(f"DEBUG: Salinity range: {df_result['salinity'].min()} to {df_result['salinity'].max()}")
-                sal_by_depth = df_result.groupby('pressure')['salinity'].agg(['mean', 'min', 'max']).reset_index()
-                plot_data["salinity"] = {
-                    "depths": sal_by_depth['pressure'].tolist(),
-                    "values": sal_by_depth['mean'].tolist(),
-                    "min": sal_by_depth['min'].tolist(),
-                    "max": sal_by_depth['max'].tolist()
-                }
-                available_params.append("salinity")
+                sal_clean = df_result[['pressure', 'salinity']].dropna()
+                if not sal_clean.empty:
+                    sal_clean['pressure_rounded'] = sal_clean['pressure'].round().astype(int)
+                    sal_profile = sal_clean.groupby('pressure_rounded')['salinity'].agg(['mean', 'count']).reset_index()
+                    sal_profile = sal_profile[sal_profile['count'] > 0]
+                    if not sal_profile.empty:
+                        plot_data["salinity"] = {
+                            "depths": sal_profile['pressure_rounded'].tolist(),
+                            "values": sal_profile['mean'].tolist(),
+                            "title": "Salinity Profile - Indian Ocean",
+                            "yLabel": "Salinity (PSU)",
+                            "color": "#4ecdc4"
+                        }
+                        available_params.append("salinity")
+                        print(f"DEBUG: Salinity profile created with {len(sal_profile)} depth points")
 
-            # Determine visualization type based on query and available data
-            query_lower = user_query.lower()
-            primary_param = None
+            print(f"DEBUG: Available parameters after processing: {available_params}")
+            print(f"DEBUG: Plot data keys: {list(plot_data.keys())}")
 
-            # Check which parameter is mentioned in the query
-            if "salinity" in query_lower and "salinity" in available_params:
-                primary_param = "salinity"
-            elif "temperature" in query_lower and "temperature" in available_params:
-                primary_param = "temperature"
-            elif available_params:
-                primary_param = available_params[0]  # Default to first available
-
-            if primary_param:
-                visualization_data = {
-                    "type": f"{primary_param}_profile",
-                    "data": plot_data[primary_param],
-                    "available_params": available_params,
-                    "metadata": {
-                        "location": "Extracted from query",
-                        "parameter": primary_param,
-                        "query_type": user_query
+            if plot_data:
+                query_lower = user_query.lower()
+                if "salinity" in query_lower and "temperature" in query_lower:
+                    visualization_data = {
+                        "type": "multiple_profiles",
+                        "available_params": available_params,
+                        "all_data": plot_data,
+                        "metadata": {
+                            "query": user_query,
+                            "parameters": available_params,
+                            "timestamp": datetime.now().isoformat(),
+                            "response_note": "Both temperature and salinity profiles available"
+                        }
                     }
-                }
-
-                # If multiple parameters are available, include them
-                if len(available_params) > 1:
-                    visualization_data["all_data"] = plot_data
+                else:
+                    primary_param = None
+                    if "salinity" in query_lower and "salinity" in available_params:
+                        primary_param = "salinity"
+                    elif "temperature" in query_lower and "temperature" in available_params:
+                        primary_param = "temperature"
+                    elif available_params:
+                        primary_param = available_params[0]
+                    if primary_param:
+                        visualization_data = {
+                            "type": f"{primary_param}_profile",
+                            "data": plot_data[primary_param],
+                            "available_params": available_params,
+                            "all_data": plot_data,
+                            "metadata": {
+                                "query": user_query,
+                                "parameter": primary_param,
+                                "timestamp": datetime.now().isoformat()
+                            }
+                        }
+                print(f"DEBUG: Final visualization_data structure: {visualization_data['type'] if visualization_data else 'None'}")
 
         # Step 5: Generate consistent response (only if SQL succeeded, no ChromaDB fallback for response)
         stats_text, stats_map = extract_numeric_stats(df_result)
@@ -641,8 +712,7 @@ def rag_query(
             else:
                 response_text = "No matching data found for your query in the current dataset."
 
-        # Step 8: Enhanced visualization
-        visualization_data = extract_plot_data_enhanced(df_result, user_query) if not df_result.empty else None
+    # Step 8: Enhanced visualization (removed extract_plot_data_enhanced overwrite)
 
         return response_text, visualization_data
 

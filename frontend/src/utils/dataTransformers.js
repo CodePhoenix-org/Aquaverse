@@ -1,93 +1,93 @@
-// Unified transformer for API data to frontend format
-export const transformApiData = (apiData) => {
-    if (!apiData) return null;
-    // Handle new backend format with explicit parameter information
-    if (apiData.type && apiData.available_params) {
-        const result = {
-            type: apiData.type,
-            available_params: apiData.available_params,
-            metadata: apiData.metadata || {}
-        };
-        if (apiData.data) {
-            result.data = apiData.data;
-        }
-        if (apiData.all_data) {
-            result.all_data = apiData.all_data;
-        }
-        return result;
-    }
-    // Handle different data types from the API
-    switch(apiData.type) {
-        case 'temperature_profile':
-            return {
-                profiles: {
-                    temperature: {
-                        depths: apiData.data.depths,
-                        values: apiData.data.values,
-                        title: 'Temperature Profile',
-                        yLabel: 'Temperature (°C)',
-                        color: '#ff6b6b'
-                    }
-                }
-            };
-        case 'salinity_profile':
-            return {
-                profiles: {
-                    salinity: {
-                        depths: apiData.data.depths,
-                        values: apiData.data.values,
-                        title: 'Salinity Profile',
-                        yLabel: 'Salinity (PSU)',
-                        color: '#4ecdc4'
-                    }
-                }
-            };
-        default:
-            return null;
-    }
-};
 // utils/dataTransformers.js
 
-export const transformToPlotFormat = (apiData) => {
-    if (!apiData) return null;
+// Enhanced transformer for API data to frontend format
+export const transformApiData = (apiData) => {
+    if (!apiData) {
+        console.log('transformApiData: No API data provided');
+        return null;
+    }
     
-    switch(apiData.type) {
-        case 'temperature_profile':
-            return {
-                depths: apiData.data.depths,
-                values: apiData.data.values,
-                title: `Temperature Profile - ${apiData.metadata.location}`,
-                yLabel: 'Temperature (°C)',
-                color: '#ff6b6b'
+    console.log('=== TRANSFORMER INPUT ===');
+    console.log('Raw API data:', apiData);
+    console.log('API data type:', typeof apiData);
+    console.log('API data keys:', Object.keys(apiData));
+
+    try {
+        // Handle multiple profiles format
+        if (apiData.all_data && typeof apiData.all_data === 'object') {
+            console.log('Multiple profiles format detected');
+            const result = {
+                type: apiData.type || 'multiple_profiles',
+                available_params: apiData.available_params || Object.keys(apiData.all_data),
+                metadata: apiData.metadata || {},
+                profiles: apiData.all_data
             };
+            
+            console.log('Transformed result:', result);
+            return result;
+        }
         
-        case 'salinity_profile':
+        // Handle single profile format
+        if (apiData.data && apiData.type) {
+            console.log('Single profile format detected');
+            const paramName = apiData.type.replace('_profile', '');
             return {
-                depths: apiData.data.depths,
-                values: apiData.data.values,
-                title: `Salinity Profile - ${apiData.metadata.location}`,
-                yLabel: 'Salinity (PSU)',
-                color: '#4ecdc4'
+                type: apiData.type,
+                available_params: [paramName],
+                metadata: apiData.metadata || {},
+                profiles: { [paramName]: apiData.data }
             };
+        }
         
-        default:
-            return null;
+        // Handle direct profiles format
+        if (apiData.profiles) {
+            console.log('Direct profiles format detected');
+            return apiData;
+        }
+        
+        console.log('Unknown data format');
+        return null;
+        
+    } catch (error) {
+        console.error('Error transforming API data:', error);
+        return null;
     }
 };
 
-export const transformToMapData = (apiData) => {
-    // Transform to map-friendly format
-    if (apiData.type === 'float_locations') {
-        return {
-            floats: apiData.data.map(float => ({
-                id: float.id,
-                latitude: float.lat,
-                longitude: float.lng,
-                status: float.status,
-                lastUpdate: float.date
-            })),
-            trajectories: apiData.trajectories || []
-        };
+// Helper function to extract plot-ready data
+export const extractPlotData = (transformedData, parameter) => {
+    if (!transformedData || !transformedData.profiles) return null;
+    
+    const profileData = transformedData.profiles[parameter];
+    if (!profileData) return null;
+    
+    // Ensure we have the required structure
+    return {
+        depths: Array.isArray(profileData.depths) ? profileData.depths : [],
+        values: Array.isArray(profileData.values) ? profileData.values : [],
+        title: profileData.title || `${parameter} Profile`,
+        yLabel: profileData.yLabel || parameter,
+        color: profileData.color || '#ff6b6b'
+    };
+};
+
+// Helper function to validate plot data
+export const validatePlotData = (data) => {
+    if (!data || !data.profiles) {
+        console.log('validatePlotData: No profiles data');
+        return false;
     }
-    return null;
+    
+    const validParams = Object.keys(data.profiles).filter(param => {
+        const profile = data.profiles[param];
+        return profile && 
+               Array.isArray(profile.depths) && 
+               Array.isArray(profile.values) &&
+               profile.depths.length > 0 &&
+               profile.values.length > 0 &&
+               profile.depths.length === profile.values.length;
+    });
+    
+    console.log('validatePlotData: Valid parameters found:', validParams);
+    return validParams.length > 0;
 };

@@ -40,11 +40,15 @@ const Dashboard = () => {
     // eslint-disable-next-line
   }, [location.state]);
   useEffect(() => {
-    console.log('Chat data received:', chatData);
+    console.log('=== CHAT DATA DEBUGGING ===');
+    console.log('Raw chat data received:', chatData);
     console.log('Type of chat data:', typeof chatData);
+    
+    if (chatData && typeof chatData === 'object') {
+        console.log('Chat data keys:', Object.keys(chatData));
+        console.log('Chat data stringified:', JSON.stringify(chatData, null, 2));
+    }
   }, [chatData]);
-
-
 
   // Transform received data
   const transformedData = useMemo(() => {
@@ -66,14 +70,48 @@ const Dashboard = () => {
     }
   };
 
-  // Auto-switch view based on data type
+  // Enhanced auto-switch view based on data type
   useEffect(() => {
     if (!transformedData) return;
 
+    console.log('Auto-switch analyzing data:', transformedData);
+    
     if (transformedData.type?.includes('profile')) {
-      setActiveView('plots');
+        // Check if we have multiple parameters
+        if (transformedData.available_params && transformedData.available_params.length > 1) {
+            setActiveView('plots'); // Use plots view which can handle multiple parameters
+            console.log('Multiple parameters detected, using plots view');
+        } else {
+            setActiveView('plots');
+            console.log('Single parameter detected, using plots view');
+        }
     } else if (transformedData.floats) {
-      setActiveView('map');
+        setActiveView('map');
+        console.log('Map data detected, using map view');
+    }
+  }, [transformedData]);
+
+  useEffect(() => {
+    console.log('=== TRANSFORMED DATA DEBUGGING ===');
+    console.log('Transformed data:', transformedData);
+    console.log('Type of transformed data:', typeof transformedData);
+    
+    if (transformedData && typeof transformedData === 'object') {
+        console.log('Transformed data keys:', Object.keys(transformedData));
+        if (transformedData.profiles) {
+            console.log('Profiles available:', Object.keys(transformedData.profiles));
+            Object.keys(transformedData.profiles).forEach(param => {
+                const profile = transformedData.profiles[param];
+                console.log(`Profile ${param}:`, {
+                    hasDepths: Array.isArray(profile.depths),
+                    depthsLength: Array.isArray(profile.depths) ? profile.depths.length : 'N/A',
+                    hasValues: Array.isArray(profile.values),
+                    valuesLength: Array.isArray(profile.values) ? profile.values.length : 'N/A',
+                    sampleDepths: Array.isArray(profile.depths) ? profile.depths.slice(0, 5) : 'N/A',
+                    sampleValues: Array.isArray(profile.values) ? profile.values.slice(0, 5) : 'N/A'
+                });
+            });
+        }
     }
   }, [transformedData]);
 
