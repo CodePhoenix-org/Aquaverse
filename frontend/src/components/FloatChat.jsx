@@ -87,10 +87,67 @@ if (typeof window !== "undefined") {
   }
 }
 
-// Axios instance with base URL (no auth token)
-const axiosInstance = axios.create({
-  baseURL: "http://127.0.0.1:8000",
-});
+// Utility function to get JWT token from localStorage
+const getAuthToken = () => {
+  if (typeof window === "undefined") return null;
+  try {
+    const user = localStorage.getItem("user");
+    if (user) {
+      const parsed = JSON.parse(user);
+      return parsed.access_token || null;
+    }
+    return null;
+  } catch (error) {
+    console.error("Error retrieving auth token from localStorage:", error);
+    return null;
+  }
+};
+
+// Create Axios instance with authentication interceptors
+const createAuthenticatedAxiosInstance = () => {
+  const instance = axios.create({
+    baseURL: "http://127.0.0.1:8000",
+    timeout: 30000,
+  });
+
+  // Request interceptor to add Authorization header
+  instance.interceptors.request.use(
+    (config) => {
+      const token = getAuthToken();
+      if (token && config.url?.includes("/chat/")) {
+        config.headers.Authorization = `Bearer ${token}`;
+        // console.log("Request headers:", config.headers); // Debug line (remove in production)
+      } else if (config.url?.includes("/chat/")) {
+        console.warn(
+          `⚠️ No authentication token found for protected endpoint: ${config.url}. User may need to log in.`
+        );
+      }
+      return config;
+    },
+    (error) => Promise.reject(error)
+  );
+
+  // Response interceptor to handle 401 errors
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (error.response?.status === 401) {
+        console.warn(
+          `🔐 401 Unauthorized error for ${error.config?.url}. Token may be invalid or expired.`
+        );
+        localStorage.removeItem("user");
+        toast.warning("Session expired. Please log in again to continue.");
+        // Optionally redirect to login: navigate("/login");
+      }
+      return Promise.reject(error);
+    }
+  );
+
+  return instance;
+};
+
+// Create authenticated Axios instance
+const axiosInstance = createAuthenticatedAxiosInstance();
 
 // Enhanced Speech Recognition Detection
 const detectSpeechRecognition = () => {
@@ -151,7 +208,7 @@ class VoiceInput {
         window.webkitSpeechRecognition)();
       this.recognition.continuous = false;
       this.recognition.interimResults = true;
-      this.recognition.lang = "en-US"; // Prioritize English
+      this.recognition.lang = "en-US";
       this.recognition.maxAlternatives = 1;
 
       if (window.SpeechGrammarList) {
@@ -188,26 +245,21 @@ class VoiceInput {
       this.recognition.onerror = (event) => {
         this.isListening = false;
         let errorMessage = "Speech recognition error";
-
         switch (event.error) {
           case "no-speech":
             errorMessage = "No speech detected. Try speaking louder.";
             break;
           case "audio-capture":
-            errorMessage =
-              "Microphone access denied. Please allow microphone access.";
+            errorMessage = "Microphone access denied. Please allow microphone access.";
             break;
           case "not-allowed":
-            errorMessage =
-              "Microphone permission denied. Please enable microphone access.";
+            errorMessage = "Microphone permission denied. Please enable microphone access.";
             break;
           case "network":
-            errorMessage =
-              "Network error. Please check your internet connection.";
+            errorMessage = "Network error. Please check your internet connection.";
             break;
           case "service-not-allowed":
-            errorMessage =
-              "Speech service not available. Please check your browser settings.";
+            errorMessage = "Speech service not available. Please check your browser settings.";
             break;
           case "aborted":
             errorMessage = "Speech recognition was aborted.";
@@ -215,7 +267,6 @@ class VoiceInput {
           default:
             errorMessage = `Speech recognition error: ${event.error}`;
         }
-
         console.error("Speech recognition error:", event.error);
         this.onError(errorMessage);
       };
@@ -262,13 +313,9 @@ function handleFileChange(event, setFileStatus, setMessages) {
   if (!validExtensions.includes(fileExtension)) {
     setFileStatus({
       status: "error",
-      message: `Invalid file type. Please upload a ${validExtensions.join(
-        ", "
-      )} file.`,
+      message: `Invalid file type. Please upload a ${validExtensions.join(", ")} file.`,
     });
-    toast.error(
-      `Invalid file type. Please upload a ${validExtensions.join(", ")} file.`
-    );
+    toast.error(`Invalid file type. Please upload a ${validExtensions.join(", ")} file.`);
     return;
   }
 
@@ -313,8 +360,7 @@ function handleFileChange(event, setFileStatus, setMessages) {
       const errorMessage = {
         id: Date.now(),
         type: "bot",
-        content:
-          "⚠️ Sorry, there was an error processing your file. Please check the file and try again.",
+        content: "⚠️ Sorry, there was an error processing your file. Please check the file and try again.",
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -329,7 +375,6 @@ const FloatChat = () => {
       const stored = localStorage.getItem(key);
       if (stored) {
         const parsed = JSON.parse(stored);
-        // Convert timestamp strings to Date objects for messages
         if (key === "floatchat_messages" && Array.isArray(parsed)) {
           return parsed.map((msg) => ({
             ...msg,
@@ -375,20 +420,17 @@ const FloatChat = () => {
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const handleKeyPress = (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      handleSendMessage();
-    }
-  };
-
-  useEffect(() => {
-    const detection = detectSpeechRecognition();
-    setVoiceSupport(detection);
-    console.log("Voice support detection:", detection);
-  }, []);
+  const isAuthenticated = () => !!getAuthToken();
 
   const fetchHistory = async () => {
+    const token = getAuthToken();
+    if (!token) {
+      console.warn("⚠️ Skipping chat history fetch: No authentication token found.");
+      toast.info("Log in to access your chat history.");
+      setChatHistory([]);
+      return;
+    }
+
     try {
       const res = await axiosInstance.get("/chat/history");
       const transformedHistory = (res.data || []).map((item) => {
@@ -398,12 +440,8 @@ const FloatChat = () => {
         const response = parts[1] || "";
         return {
           id: item.id,
-          title:
-            query.substring(0, 50) + (query.length > 50 ? "..." : "") ||
-            "Untitled Query",
-          snippet:
-            response.substring(0, 100) + (response.length > 100 ? "..." : "") ||
-            "No preview available",
+          title: query.substring(0, 50) + (query.length > 50 ? "..." : "") || "Untitled Query",
+          snippet: response.substring(0, 100) + (response.length > 100 ? "..." : "") || "No preview available",
           date: new Date(item.timestamp).toLocaleDateString(),
           starred: false,
           viz_type: item.viz_tab,
@@ -420,26 +458,29 @@ const FloatChat = () => {
     fetchHistory();
   }, []);
 
-  // Multilingual translation for voice input
   const translateText = async (text) => {
     if (!text) return;
     try {
-      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURI(
-        text
-      )}`;
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURI(text)}`;
       const response = await fetch(url);
       const data = await response.json();
       const translatedText = data[0][0][0];
       if (translatedText && translatedText.trim() !== "") {
         setInputText(translatedText);
       } else {
-        setInputText(text); // Fallback to original text
+        setInputText(text);
       }
     } catch (error) {
       console.error("Translation error:", error);
-      setInputText(text); // Fallback to original text
+      setInputText(text);
     }
   };
+
+  useEffect(() => {
+    const detection = detectSpeechRecognition();
+    setVoiceSupport(detection);
+    console.log("Voice support detection:", detection);
+  }, []);
 
   useEffect(() => {
     if (!voiceSupport?.supported) return;
@@ -492,10 +533,7 @@ const FloatChat = () => {
 
   useEffect(() => {
     if (voiceSupport?.supported) {
-      localStorage.setItem(
-        "floatchat_voiceEnabled",
-        JSON.stringify(voiceEnabled)
-      );
+      localStorage.setItem("floatchat_voiceEnabled", JSON.stringify(voiceEnabled));
     }
   }, [voiceEnabled, voiceSupport]);
 
@@ -606,7 +644,14 @@ const FloatChat = () => {
       });
   };
 
-  const handleSendMessage = () => {
+  const handleKeyPress = (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const handleSendMessage = async () => {
     const query = inputText.trim();
     if (query === "") return;
 
@@ -623,100 +668,91 @@ const FloatChat = () => {
     setIsRecording(false);
     setVoiceStatus("idle");
 
-    setTimeout(() => {
+    setTimeout(async () => {
       const cannedBotMessage = {
         id: Date.now() + 1,
         type: "bot",
-        content: `🔍 Processing your query: "${query.substring(0, 50)}${
-          query.length > 50 ? "..." : ""
-        }"\n\nI'll analyze this using our ARGO float database and generate the appropriate ocean data visualizations.`,
+        content: `🔍 Processing your query: "${query.substring(0, 50)}${query.length > 50 ? "..." : ""}"\n\nI'll analyze this using our ARGO float database and generate the appropriate ocean data visualizations.`,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, cannedBotMessage]);
 
-      axiosInstance
-        .post("/chat/query", { query })
-        .then((res) => {
-          let backendMsg = "";
-          let vizData = null;
-          let vizTab = null;
+      try {
+        const res = await axiosInstance.post("/chat/query", { query });
+        let backendMsg = "";
+        let vizData = null;
+        let vizTab = null;
 
-          if (Array.isArray(res.data)) {
-            backendMsg = res.data[0] || "No response from backend.";
-            vizData = res.data[1] || null;
-          } else if (typeof res.data === "object") {
-            backendMsg =
-              res.data.message ||
-              res.data.answer ||
-              "No response from backend.";
-            vizData = res.data.data || null;
-          } else {
-            backendMsg = String(res.data);
-          }
+        if (Array.isArray(res.data)) {
+          backendMsg = res.data[0] || "No response from backend.";
+          vizData = res.data[1] || null;
+        } else if (typeof res.data === "object") {
+          backendMsg = res.data.message || res.data.answer || "No response from backend.";
+          vizData = res.data.data || null;
+        } else {
+          backendMsg = String(res.data);
+        }
 
-          if (vizData && vizData.type) {
-            if (vizData.type.includes("profile")) vizTab = "plots";
-            else if (vizData.type.includes("map")) vizTab = "map";
-            else if (vizData.type.includes("comparison")) vizTab = "comparison";
-            else if (vizData.type.includes("table")) vizTab = "table";
-          }
+        if (vizData && vizData.type) {
+          if (vizData.type.includes("profile")) vizTab = "plots";
+          else if (vizData.type.includes("map")) vizTab = "map";
+          else if (vizData.type.includes("comparison")) vizTab = "comparison";
+          else if (vizData.type.includes("table")) vizTab = "table";
+        }
 
-          setLastVizData(vizData);
-          setLastVizTab(vizTab);
+        setLastVizData(vizData);
+        setLastVizTab(vizTab);
 
-          const finalBotMessage = {
-            id: Date.now() + 2,
-            type: "bot",
-            content: backendMsg,
-            timestamp: new Date(),
-            hasVisualization: !!vizData,
-          };
+        const finalBotMessage = {
+          id: Date.now() + 2,
+          type: "bot",
+          content: backendMsg,
+          timestamp: new Date(),
+          hasVisualization: !!vizData,
+        };
 
-          setMessages((prev) => [...prev, finalBotMessage]);
+        setMessages((prev) => [...prev, finalBotMessage]);
 
-          // Save to chat history
-          axiosInstance
-            .post("/chat/history", {
+        // Save to chat history if authenticated
+        const token = getAuthToken();
+        if (token) {
+          try {
+            const historyRes = await axiosInstance.post("/chat/history", {
               query,
               response: backendMsg,
               viz_type: vizData?.type,
-            })
-            .then((historyRes) => {
-              const newHistoryItem = {
-                id: historyRes.data.id,
-                title:
-                  query.substring(0, 50) + (query.length > 50 ? "..." : "") ||
-                  "Untitled Query",
-                snippet:
-                  backendMsg.substring(0, 100) +
-                    (backendMsg.length > 100 ? "..." : "") ||
-                  "No preview available",
-                date: new Date().toLocaleDateString(),
-                starred: false,
-                viz_type: vizData?.type,
-              };
-              setChatHistory((prev) => [newHistoryItem, ...prev]);
-            })
-            .catch((err) => {
-              console.error("Failed to save chat history:", err);
-              toast.error("Failed to save chat history.");
             });
-        })
-        .catch((err) => {
-          console.error("Backend error:", err);
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Date.now() + 2,
-              type: "bot",
-              content:
-                "⚠️ Sorry, I encountered an error while processing your request. Please try again or check your connection.",
-              timestamp: new Date(),
-            },
-          ]);
-          toast.error("Error processing query.");
-        })
-        .finally(() => setIsTyping(false));
+            const newHistoryItem = {
+              id: historyRes.data.id,
+              title: query.substring(0, 50) + (query.length > 50 ? "..." : "") || "Untitled Query",
+              snippet: backendMsg.substring(0, 100) + (backendMsg.length > 100 ? "..." : "") || "No preview available",
+              date: new Date().toLocaleDateString(),
+              starred: false,
+              viz_type: vizData?.type,
+            };
+            setChatHistory((prev) => [newHistoryItem, ...prev]);
+          } catch (historyErr) {
+            console.error("Failed to save chat history:", historyErr);
+            toast.error("Failed to save chat history.");
+          }
+        } else {
+          console.warn("⚠️ Skipping chat history save: No authentication token found.");
+        }
+      } catch (err) {
+        console.error("Backend error:", err);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now() + 2,
+            type: "bot",
+            content: "⚠️ Sorry, I encountered an error while processing your request. Please try again or check your connection.",
+            timestamp: new Date(),
+          },
+        ]);
+        toast.error("Error processing query.");
+      } finally {
+        setIsTyping(false);
+      }
     }, 1000);
   };
 
@@ -730,10 +766,7 @@ const FloatChat = () => {
       messages: messages.map((m) => ({
         type: m.type,
         content: m.content,
-        timestamp:
-          m.timestamp instanceof Date
-            ? m.timestamp.toISOString()
-            : m.timestamp,
+        timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
         filename: m.filename,
         hasVisualization: m.hasVisualization,
       })),
@@ -744,10 +777,7 @@ const FloatChat = () => {
       const json = JSON.stringify(chatData);
       const encoded = btoa(unescape(encodeURIComponent(json)));
       const longUrl = `${window.location.origin}${window.location.pathname}?share=${encoded}`;
-
-      const response = await fetch(
-        `https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`
-      );
+      const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`);
       const shortUrl = await response.text();
 
       if (navigator.share) {
@@ -798,14 +828,12 @@ const FloatChat = () => {
     {
       icon: <BarChart3 className="w-8 h-8 animate-float" />,
       title: "Compare Parameters",
-      description:
-        "Compare BGC parameters in the Arabian Sea for the last 6 months",
+      description: "Compare BGC parameters in the Arabian Sea for the last 6 months",
     },
     {
       icon: <Search className="w-8 h-8 animate-float" />,
       title: "Find Floats",
-      description:
-        "What are the nearest ARGO floats to coordinates 15°N, 68°E?",
+      description: "What are the nearest ARGO floats to coordinates 15°N, 68°E?",
     },
     {
       icon: <Waves className="w-8 h-8 animate-float" />,
@@ -816,9 +844,7 @@ const FloatChat = () => {
 
   const themeClasses = {
     bg: darkMode ? "bg-gray-900" : "bg-white",
-    sidebarBg: darkMode
-      ? "bg-gray-800/95 backdrop-blur-md"
-      : "bg-gray-50/95 backdrop-blur-md",
+    sidebarBg: darkMode ? "bg-gray-800/95 backdrop-blur-md" : "bg-gray-50/95 backdrop-blur-md",
     cardBg: darkMode ? "bg-gray-800/50" : "bg-white/80",
     cardHoverBg: darkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100/80",
     promptBg: darkMode ? "bg-gray-800/50" : "bg-gray-50/80",
@@ -828,16 +854,10 @@ const FloatChat = () => {
     textMuted: darkMode ? "text-gray-400" : "text-gray-500",
     border: darkMode ? "border-gray-700/50" : "border-gray-200/50",
     borderLight: darkMode ? "border-gray-600/50" : "border-gray-100/50",
-    inputBg: darkMode
-      ? "bg-gray-800/50 backdrop-blur-md"
-      : "bg-gray-50/80 backdrop-blur-md",
+    inputBg: darkMode ? "bg-gray-800/50 backdrop-blur-md" : "bg-gray-50/80 backdrop-blur-md",
     inputBorder: darkMode ? "border-gray-600/50" : "border-gray-200/50",
-    inputFocus: darkMode
-      ? "border-blue-400 ring-blue-400/30"
-      : "border-blue-300 ring-blue-300/30",
-    botMessageBg: darkMode
-      ? "bg-gray-800/50 backdrop-blur-md"
-      : "bg-gray-50/80 backdrop-blur-md",
+    inputFocus: darkMode ? "border-blue-400 ring-blue-400/30" : "border-blue-300 ring-blue-300/30",
+    botMessageBg: darkMode ? "bg-gray-800/50 backdrop-blur-md" : "bg-gray-50/80 backdrop-blur-md",
     hoverBg: darkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100/80",
     buttonHoverBg: darkMode ? "hover:bg-gray-600/50" : "hover:bg-gray-100/80",
     accent: "bg-gradient-to-r from-blue-500 to-cyan-600",
@@ -964,9 +984,18 @@ const FloatChat = () => {
                 FloatChat
               </h1>
               <p
-                className={`text-base ${themeClasses.textMuted} font-semibold`}
+                className={`text-base ${themeClasses.textMuted} font-semibold flex items-center`}
               >
                 ARGO Data Discovery
+                {isAuthenticated() ? (
+                  <span className="ml-2 px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-full flex ">
+                    User
+                  </span>
+                ) : (
+                  <span className="ml-2 px-2 py-1 bg-yellow-500/20 text-yellow-400 text-xs rounded-full">
+                    👤 Guest
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -1013,65 +1042,63 @@ const FloatChat = () => {
             >
               Recent Chats
             </h3>
-            {chatHistory.map((chat, index) => (
-              <div
-                key={chat.id}
-                className={`group p-4 ${
-                  themeClasses.cardHoverBg
-                } rounded-xl cursor-pointer transition-all duration-300 border ${
-                  themeClasses.border
-                } hover:shadow-2xl hover:scale-[1.02] animate-slide-in ${
-                  index % 2 === 0 ? "animate-delay-200" : "animate-delay-400"
-                }`}
-                style={{ animationDelay: `${index * 100}ms` }}
-                onClick={() => {
-                  setInputText(chat.title.replace("...", ""));
-                }}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <p
-                      className={`text-lg font-semibold ${themeClasses.text} truncate`}
-                    >
-                      {chat.title}
-                    </p>
-                    <p
-                      className={`text-base ${themeClasses.textMuted} truncate mt-1`}
-                    >
-                      {chat.snippet}
-                    </p>
-                    <p className={`text-base ${themeClasses.textMuted} mt-1`}>
-                      {chat.date}
-                    </p>
-                    {chat.viz_type && (
-                      <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mt-1">
-                        {chat.viz_type}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                    <button
-                      className={`p-2 ${themeClasses.buttonHoverBg} rounded-lg transition-all duration-200 hover:scale-110`}
-                    >
-                      <Star
-                        className={`w-5 h-5 ${
-                          chat.starred
-                            ? "text-yellow-500 fill-yellow-500 animate-pulse-slow"
-                            : themeClasses.textMuted
-                        }`}
-                      />
-                    </button>
-                    <button
-                      className={`p-2 ${themeClasses.buttonHoverBg} rounded-lg transition-all duration-200 hover:scale-110`}
-                    >
-                      <MoreVertical
-                        className={`w-5 h-5 ${themeClasses.textMuted}`}
-                      />
-                    </button>
+            {chatHistory.length === 0 ? (
+              <div className={`${themeClasses.cardBg} rounded-xl p-6 text-center`}>
+                <p className={`${themeClasses.textMuted} text-sm`}>
+                  {isAuthenticated()
+                    ? "No chat history yet. Start chatting!"
+                    : "Log in to view your chat history"}
+                </p>
+              </div>
+            ) : (
+              chatHistory.map((chat, index) => (
+                <div
+                  key={chat.id}
+                  className={`group p-4 ${themeClasses.cardHoverBg} rounded-xl cursor-pointer transition-all duration-300 border ${themeClasses.border} hover:shadow-2xl hover:scale-[1.02] animate-slide-in ${index % 2 === 0 ? "animate-delay-200" : "animate-delay-400"}`}
+                  style={{ animationDelay: `${index * 100}ms` }}
+                  onClick={() => {
+                    setInputText(chat.title.replace("...", ""));
+                  }}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className={`text-lg font-semibold ${themeClasses.text} truncate`}
+                      >
+                        {chat.title}
+                      </p>
+                      <p
+                        className={`text-base ${themeClasses.textMuted} truncate mt-1`}
+                      >
+                        {chat.snippet}
+                      </p>
+                      <p className={`text-base ${themeClasses.textMuted} mt-1`}>
+                        {chat.date}
+                      </p>
+                      {chat.viz_type && (
+                        <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mt-1">
+                          {chat.viz_type}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                      <button
+                        className={`p-2 ${themeClasses.buttonHoverBg} rounded-lg transition-all duration-200 hover:scale-110`}
+                      >
+                        <Star
+                          className={`w-5 h-5 ${chat.starred ? "text-yellow-500 fill-yellow-500 animate-pulse-slow" : themeClasses.textMuted}`}
+                        />
+                      </button>
+                      <button
+                        className={`p-2 ${themeClasses.buttonHoverBg} rounded-lg transition-all duration-200 hover:scale-110`}
+                      >
+                        <MoreVertical className={`w-5 h-5 ${themeClasses.textMuted}`} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
@@ -1125,11 +1152,7 @@ const FloatChat = () => {
               onClick={() => setDarkMode(!darkMode)}
               className={`p-3 ${themeClasses.hoverBg} rounded-xl ${themeClasses.textMuted} transition-all duration-200 hover:scale-110 shadow-md`}
             >
-              {darkMode ? (
-                <Sun className="w-6 h-6" />
-              ) : (
-                <Moon className="w-6 h-6" />
-              )}
+              {darkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
             </button>
             <button
               onClick={handleShare}
@@ -1162,8 +1185,7 @@ const FloatChat = () => {
                 <p
                   className={`text-xl ${themeClasses.textSecondary} max-w-2xl mx-auto mb-6 font-semibold leading-relaxed`}
                 >
-                  Your AI-powered assistant for exploring and analyzing ARGO
-                  ocean data with precision and ease.
+                  Your AI-powered assistant for exploring and analyzing ARGO ocean data with precision and ease.
                 </p>
 
                 <div className="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4 text-base mb-6">
@@ -1233,11 +1255,7 @@ const FloatChat = () => {
                   >
                     <div className="flex items-start space-x-4">
                       <div
-                        className={`w-14 h-14 ${
-                          themeClasses.cardBg
-                        } rounded-xl flex items-center justify-center text-blue-500 group-hover:bg-blue-50 ${
-                          darkMode ? "group-hover:bg-blue-900/50" : ""
-                        } transition-all duration-300 shadow-lg group-hover:shadow-xl`}
+                        className={`w-14 h-14 ${themeClasses.cardBg} rounded-xl flex items-center justify-center text-blue-500 group-hover:bg-blue-50 ${darkMode ? "group-hover:bg-blue-900/50" : ""} transition-all duration-300 shadow-lg group-hover:shadow-xl`}
                       >
                         {prompt.icon}
                       </div>
@@ -1265,25 +1283,15 @@ const FloatChat = () => {
                   message.type === "bot" &&
                   idx === messages.length - 1 &&
                   (message.hasVisualization ||
-                    /visualization|chart|plot|map|graph/i.test(
-                      message.content
-                    ));
+                    /visualization|chart|plot|map|graph/i.test(message.content));
 
                 return (
                   <div
                     key={message.id}
-                    className={`flex items-start space-x-4 ${
-                      message.type === "user"
-                        ? "flex-row-reverse space-x-reverse"
-                        : ""
-                    } animate-slide-in`}
+                    className={`flex items-start space-x-4 ${message.type === "user" ? "flex-row-reverse space-x-reverse" : ""} animate-slide-in`}
                   >
                     <div
-                      className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 shadow-xl ${
-                        message.type === "user"
-                          ? "bg-blue-500 text-white"
-                          : "bg-gradient-to-br from-purple-500 to-pink-500 text-white"
-                      } transition-all duration-200 hover:scale-110`}
+                      className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 shadow-xl ${message.type === "user" ? "bg-blue-500 text-white" : "bg-gradient-to-br from-purple-500 to-pink-500 text-white"} transition-all duration-200 hover:scale-110`}
                     >
                       {message.type === "user" ? (
                         <User className="w-6 h-6" />
@@ -1293,16 +1301,10 @@ const FloatChat = () => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div
-                        className={`prose prose-gray max-w-none ${
-                          message.type === "user" ? "text-right" : ""
-                        }`}
+                        className={`prose prose-gray max-w-none ${message.type === "user" ? "text-right" : ""}`}
                       >
                         <div
-                          className={`inline-block p-6 rounded-2xl shadow-xl ${
-                            message.type === "user"
-                              ? "bg-blue-500 text-white"
-                              : `${themeClasses.botMessageBg} ${themeClasses.text}`
-                          } transition-all duration-200 hover:shadow-2xl`}
+                          className={`inline-block p-6 rounded-2xl shadow-xl ${message.type === "user" ? "bg-blue-500 text-white" : `${themeClasses.botMessageBg} ${themeClasses.text}`} transition-all duration-200 hover:shadow-2xl`}
                         >
                           <p className="whitespace-pre-wrap m-0 text-lg font-semibold leading-relaxed">
                             {message.content}
@@ -1334,19 +1336,14 @@ const FloatChat = () => {
                         </div>
                       </div>
                       <p
-                        className={`text-base ${
-                          themeClasses.textMuted
-                        } mt-2 font-semibold ${
-                          message.type === "user" ? "text-right" : ""
-                        }`}
+                        className={`text-base ${themeClasses.textMuted} mt-2 font-semibold ${message.type === "user" ? "text-right" : ""}`}
                       >
                         {(() => {
                           let dateObj = message.timestamp;
                           if (typeof dateObj === "string") {
                             dateObj = new Date(dateObj);
                           }
-                          return dateObj &&
-                            typeof dateObj.toLocaleTimeString === "function"
+                          return dateObj && typeof dateObj.toLocaleTimeString === "function"
                             ? dateObj.toLocaleTimeString([], {
                                 hour: "2-digit",
                                 minute: "2-digit",
@@ -1410,11 +1407,7 @@ const FloatChat = () => {
                       ? "Ask FloatChat about ocean data... (Enable voice input above)"
                       : "Ask FloatChat about ocean data... or tap the mic to speak"
                   }
-                  className={`flex-1 bg-transparent border-none resize-none focus:outline-none placeholder-gray-500 ${
-                    themeClasses.text
-                  } font-semibold text-lg ${
-                    isVoiceActive ? "border-l-2 border-purple-400 pl-4" : ""
-                  }`}
+                  className={`flex-1 bg-transparent border-none resize-none focus:outline-none placeholder-gray-500 ${themeClasses.text} font-semibold text-lg ${isVoiceActive ? "border-l-2 border-purple-400 pl-4" : ""}`}
                   rows={1}
                   style={{
                     minHeight: "28px",
@@ -1457,11 +1450,7 @@ const FloatChat = () => {
                   <button
                     onClick={handleSendMessage}
                     disabled={inputText.trim() === "" || isVoiceActive}
-                    className={`p-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-full transition-all duration-200 shadow-md hover:shadow-xl hover:scale-110 ${
-                      inputText.trim() !== "" && !isVoiceActive
-                        ? "animate-pulse-slow"
-                        : ""
-                    }`}
+                    className={`p-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-full transition-all duration-200 shadow-md hover:shadow-xl hover:scale-110 ${inputText.trim() !== "" && !isVoiceActive ? "animate-pulse-slow" : ""}`}
                   >
                     <Send className="w-6 h-5" />
                   </button>
@@ -1482,8 +1471,7 @@ const FloatChat = () => {
               {voiceStatus === "error" && (
                 <div className="flex items-center justify-center mt-4">
                   <span className={`text-base text-red-500 font-semibold`}>
-                    ❌ Microphone access required. Please allow access and try
-                    again.
+                    ❌ Microphone access required. Please allow access and try again.
                   </span>
                 </div>
               )}

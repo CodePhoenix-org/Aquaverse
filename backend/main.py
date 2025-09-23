@@ -9,6 +9,8 @@ from routes import threeD_visualisations
 from rag.dataVisualisation import rag_query
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from pathlib import Path
+import random , json
 import os
 load_dotenv()
 
@@ -44,6 +46,24 @@ os.makedirs(CHROMA_PATH, exist_ok=True)
 @app.get("/")
 def home():
     return {"msg": "you are awesome and connected to the database 🦖"}
+
+
+
+@app.get("/api/argo")
+async def get_argo():
+    file_path = Path(__file__).parent / "argodata.json"
+    with open(file_path, "r") as f:
+        argo_data = json.load(f)
+
+    if len(argo_data) > 5000:
+        argo_data = random.sample(argo_data, 5000)
+
+    return argo_data
+
+
+
+
+
 
 class ChatRequest(BaseModel):
     query: str
