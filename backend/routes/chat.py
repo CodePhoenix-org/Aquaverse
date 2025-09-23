@@ -7,7 +7,7 @@ from auth.utils import get_current_user
 from auth.model import User
 from typing import List
 
-router = APIRouter(prefix="/chat", tags=["chat"])
+router = APIRouter(prefix="/chat")
 
 @router.get("/history", response_model=List[ChatMessage])
 def get_chat_history(
