@@ -5,6 +5,7 @@ from db.database import DB_URI, Base
 from auth import routes as authroute
 from auth import profile
 from routes import chat
+from routes import threeD_visualisations
 from rag.dataVisualisation import rag_query
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -28,6 +29,7 @@ Base.metadata.create_all(bind=engine)
 app.include_router(authroute.router, prefix="/auth", tags=["Auth"])
 app.include_router(profile.router, prefix="/profiles", tags=["Profiles"])
 app.include_router(chat.router, tags=["Chat"]) 
+app.include_router(threeD_visualisations.router)
 
 
 # ChromaDB configuration
