@@ -13,7 +13,37 @@ export const transformApiData = (apiData) => {
     console.log('API data keys:', Object.keys(apiData));
 
     try {
-        // Handle multiple profiles format
+            // Handle 3D parameter plot format
+            if (apiData.type === '3d_parameter_plot') {
+                console.log('3D Parameter plot format detected');
+                return {
+                    type: apiData.type,
+                    threeDData: {
+                        parameterPlot: {
+                            normalData: apiData.normalData || [],
+                            anomalyData: apiData.anomalyData || []
+                        }
+                    },
+                    metadata: apiData.metadata || {},
+                    available_params: ['temperature', 'salinity', 'oxygen']
+                };
+            }
+
+            // Handle 3D ocean plot format
+            if (apiData.type === '3d_ocean_plot') {
+                console.log('3D Ocean plot format detected');
+                return {
+                    type: apiData.type,
+                    threeDData: {
+                        oceanPlot: {
+                            data: apiData.oceanData || []
+                        }
+                    },
+                    metadata: apiData.metadata || {},
+                    available_params: ['temperature', 'salinity', 'oxygen']
+                };
+            }
+        
         if (apiData.all_data && typeof apiData.all_data === 'object') {
             console.log('Multiple profiles format detected');
             const result = {
@@ -91,3 +121,22 @@ export const validatePlotData = (data) => {
     console.log('validatePlotData: Valid parameters found:', validParams);
     return validParams.length > 0;
 };
+    // New function to check if data contains 3D visualizations
+    export const has3DData = (data) => {
+        return data && data.threeDData && (
+            data.threeDData.parameterPlot || 
+            data.threeDData.oceanPlot
+        );
+    };
+
+    // Extract 3D parameter data
+    export const extract3DParameterData = (data) => {
+        if (!has3DData(data)) return { normalData: [], anomalyData: [] };
+        return data.threeDData.parameterPlot || { normalData: [], anomalyData: [] };
+    };
+
+    // Extract 3D ocean data
+    export const extract3DOceanData = (data) => {
+        if (!has3DData(data)) return [];
+        return data.threeDData.oceanPlot?.data || [];
+    };

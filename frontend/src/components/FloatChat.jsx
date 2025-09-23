@@ -140,7 +140,7 @@ class VoiceInput {
       this.recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
       this.recognition.continuous = false;
       this.recognition.interimResults = true;
-      this.recognition.lang = 'en-US';
+  this.recognition.lang = 'hi-IN'; // Prioritize Hindi
       this.recognition.maxAlternatives = 1;
 
       if (window.SpeechGrammarList) {
@@ -158,7 +158,6 @@ class VoiceInput {
       this.recognition.onresult = (event) => {
         let interimTranscript = '';
         let finalTranscript = '';
-
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
@@ -167,11 +166,7 @@ class VoiceInput {
             interimTranscript += transcript;
           }
         }
-
-        if (interimTranscript) {
-          this.onTranscript(interimTranscript, false);
-        }
-
+        this.onTranscript(interimTranscript, false);
         if (finalTranscript) {
           this.onTranscript(finalTranscript, true);
         }
@@ -314,6 +309,26 @@ const FloatChat = () => {
   const [lastVizData, setLastVizData] = useState(() => getInitialState('floatchat_lastVizData', null));
   const [lastVizTab, setLastVizTab] = useState(() => getInitialState('floatchat_lastVizTab', null));
   const [inputText, setInputText] = useState(() => getInitialState('floatchat_inputText', ''));
+  const [voiceError, setVoiceError] = useState(null);
+
+  // Multilingual translation for voice input
+  const translateText = async (text) => {
+    if (!text) return;
+    try {
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURI(text)}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      const translatedText = data[0][0][0];
+      if (translatedText && translatedText.trim() !== '') {
+        setInputText(translatedText);
+      } else {
+        setInputText(text); // Fallback to original text
+      }
+    } catch (error) {
+      console.error('Translation error:', error);
+      setInputText(text); // Fallback to original text
+    }
+  };
   const [isRecording, setIsRecording] = useState(false);
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('idle');
@@ -356,20 +371,17 @@ const FloatChat = () => {
 
     const voiceInput = new VoiceInput(
       (transcript, isFinal) => {
-        setInputText(prev => {
-          if (isFinal) {
-            return transcript;
-          } else {
-            return prev ? prev + ' ' + transcript : transcript;
-          }
-        });
-        
+        setInputText(transcript);
+        if (isFinal) {
+          translateText(transcript);
+        }
         setTimeout(() => {
           inputRef.current?.scrollIntoView({ behavior: 'smooth' });
         }, 0);
       },
       (error) => {
         console.error('Voice recognition error:', error);
+        setVoiceError(error);
         setVoiceStatus('error');
         setTimeout(() => setVoiceStatus('idle'), 3000);
         toast.error(error);
@@ -895,7 +907,7 @@ const FloatChat = () => {
                     )
                   ) : (
                     <button
-                      className={`inline-flex items-center space-x-2 px-5 py-3 rounded-xl bg-gray-100 dark:bg-gray-800/50 text-gray-500 rounded-xl cursor-not-allowed font-semibold shadow-sm text-base`}
+                      className="inline-flex items-center space-x-1 px-3 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 cursor-not-allowed"
                       disabled
                     >
                       <MicOff className="w-6 h-6" />
@@ -1081,6 +1093,9 @@ const FloatChat = () => {
                     ❌ Microphone access required. Please allow access and try again.
                   </span>
                 </div>
+              )}
+              {voiceError && (
+                <p className="text-red-500 text-xs mt-1">{voiceError}</p>
               )}
               
               {voiceStatus === 'requesting' && (

@@ -10,4 +10,9 @@ export default defineConfig({
       'three/examples/jsm/controls/OrbitControls'
     ],
   },
+  server: {
+    proxy: {
+      '/api': 'http://localhost:8000'
+    }
+  }
 })
