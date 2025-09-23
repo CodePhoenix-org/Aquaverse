@@ -1,6 +1,21 @@
 // Unified transformer for API data to frontend format
 export const transformApiData = (apiData) => {
     if (!apiData) return null;
+    // Handle new backend format with explicit parameter information
+    if (apiData.type && apiData.available_params) {
+        const result = {
+            type: apiData.type,
+            available_params: apiData.available_params,
+            metadata: apiData.metadata || {}
+        };
+        if (apiData.data) {
+            result.data = apiData.data;
+        }
+        if (apiData.all_data) {
+            result.all_data = apiData.all_data;
+        }
+        return result;
+    }
     // Handle different data types from the API
     switch(apiData.type) {
         case 'temperature_profile':

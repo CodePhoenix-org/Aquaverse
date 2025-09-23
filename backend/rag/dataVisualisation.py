@@ -129,7 +129,7 @@ def run_sql(sql: str) -> pd.DataFrame:
 # Enhanced Summarization helpers
 # ------------------------------------------------------------
 def extract_numeric_stats(df: pd.DataFrame) -> Tuple[str, Dict[str, Dict[str, float]]]:
-    """Extract numeric statistics from SQL results."""
+    """Extract numeric statistics from SQL results, handling both raw and aggregated data."""
     if df.empty:
         return "No data found.", {}
 
@@ -138,6 +138,7 @@ def extract_numeric_stats(df: pd.DataFrame) -> Tuple[str, Dict[str, Dict[str, fl
     stats_out: Dict[str, Dict[str, float]] = {}
 
     for target in targets:
+        # Check for raw data column
         if target in lower_map:
             col = lower_map[target]
             series = pd.to_numeric(df[col], errors="coerce").dropna()
@@ -147,11 +148,36 @@ def extract_numeric_stats(df: pd.DataFrame) -> Tuple[str, Dict[str, Dict[str, fl
                     "max": round(float(series.max()), 1),
                     "mean": round(float(series.mean()), 1),
                 }
+        else:
+            # Check for aggregated columns (avg_salinity, min_salinity, max_salinity, etc.)
+            agg_prefixes = ["avg_", "min_", "max_", "mean_"]
+            for prefix in agg_prefixes:
+                agg_col = f"{prefix}{target}"
+                if agg_col in lower_map:
+                    col = lower_map[agg_col]
+                    series = pd.to_numeric(df[col], errors="coerce").dropna()
+                    if not series.empty:
+                        if target not in stats_out:
+                            stats_out[target] = {}
+                        if prefix == "min_":
+                            stats_out[target]["min"] = round(float(series.min()), 1)
+                        elif prefix == "max_":
+                            stats_out[target]["max"] = round(float(series.max()), 1)
+                        elif prefix in ["avg_", "mean_"]:
+                            stats_out[target]["mean"] = round(float(series.mean()), 1)
 
     if not stats_out:
         return "No valid temperature or salinity data.", {}
 
-    parts = [f"{name}: min {s['min']}, max {s['max']}, avg {s['mean']}" for name, s in stats_out.items()]
+    parts = []
+    for name, s in stats_out.items():
+        if "min" in s and "max" in s and "mean" in s:
+            parts.append(f"{name}: min {s['min']}, max {s['max']}, avg {s['mean']}")
+        elif "min" in s and "max" in s:
+            parts.append(f"{name}: min {s['min']}, max {s['max']}")
+        elif "mean" in s:
+            parts.append(f"{name}: avg {s['mean']}")
+
     return "; ".join(parts), stats_out
 
 
@@ -496,7 +522,19 @@ def rag_query(
         # Step 3: SQL generation with caching
         df_result = pd.DataFrame()
         sql_cache_key = hashlib.md5(user_query.encode()).hexdigest()
-        if llm:
+        # If user query is salinity-focused, use hardcoded SQL
+        if "salinity" in user_query.lower():
+            sql = f"""
+            SELECT pressure, salinity, temperature, latitude, longitude
+            FROM argo_profiles
+            WHERE longitude BETWEEN 50 AND 100
+            AND latitude BETWEEN -30 AND 30
+            AND salinity IS NOT NULL
+            ORDER BY pressure
+            LIMIT 1000
+            """
+            print(f"DEBUG: Using salinity-focused query: {sql}")
+        elif llm:
             if sql_cache_key in sql_cache:
                 sql = sql_cache[sql_cache_key]
                 print(f"DEBUG: Using cached SQL: {sql}")
@@ -512,67 +550,86 @@ def rag_query(
                 sql_cache[sql_cache_key] = sql
                 print(f"DEBUG: Generated and cached SQL: {sql}")
 
-            # Fix invalid dates dynamically
-            available_dates = get_available_dates(db_uri)
-            if available_dates:
-                date_pattern = r"\d{4}-\d{2}-\d{2}"
-                dates_in_sql = re.findall(date_pattern, sql)
-                for req_date in dates_in_sql:
-                    if req_date not in available_dates:
-                        print(f"DEBUG: No data for {req_date}; using available dates: {available_dates}")
-                        dates_str = ", ".join(f"'{d}'" for d in available_dates)
-                        sql = re.sub(
-                            r"time::date = '\d{4}-\d{2}-\d{2}'|time BETWEEN '\d{4}-\d{2}-\d{2} 00:00:00' AND '\d{4}-\d{2}-\d{2} 23:59:59'",
-                            f"time::date IN ({dates_str})",
-                            sql
-                        )
-                        break
-            
-            try:
-                df_result = run_sql(sql)
-                print(f"DEBUG: SQL executed successfully, got {len(df_result)} rows")
-                print(f"DEBUG: Columns: {df_result.columns.tolist()}")
-            except Exception as e:
-                print(f"WARNING: SQL execution failed: {e}")
-                df_result = pd.DataFrame()
+        # Fix invalid dates dynamically
+        available_dates = get_available_dates(db_uri)
+        if 'sql' in locals() and available_dates:
+            date_pattern = r"\d{4}-\d{2}-\d{2}"
+            dates_in_sql = re.findall(date_pattern, sql)
+            for req_date in dates_in_sql:
+                if req_date not in available_dates:
+                    print(f"DEBUG: No data for {req_date}; using available dates: {available_dates}")
+                    dates_str = ", ".join(f"'{d}'" for d in available_dates)
+                    sql = re.sub(
+                        r"time::date = '\d{4}-\d{2}-\d{2}'|time BETWEEN '\d{4}-\d{2}-\d{2} 00:00:00' AND '\d{4}-\d{2}-\d{2} 23:59:59'",
+                        f"time::date IN ({dates_str})",
+                        sql
+                    )
+                    break
+
+        try:
+            df_result = run_sql(sql)
+            print(f"DEBUG: SQL executed successfully, got {len(df_result)} rows")
+            print(f"DEBUG: Columns: {df_result.columns.tolist()}")
+        except Exception as e:
+            print(f"WARNING: SQL execution failed: {e}")
+            df_result = pd.DataFrame()
 
         # Step 4: Visualization data (only if SQL succeeded)
         visualization_data = None
         if not df_result.empty:
+            # Determine which parameters are available and should be visualized
+            available_params = []
+            plot_data = {}
+
             if 'temperature' in df_result.columns and 'pressure' in df_result.columns:
                 print(f"DEBUG: Temperature range: {df_result['temperature'].min()} to {df_result['temperature'].max()}")
                 temp_by_depth = df_result.groupby('pressure')['temperature'].agg(['mean', 'min', 'max']).reset_index()
-                visualization_data = {
-                    "type": "temperature_profile",
-                    "data": {
-                        "depths": temp_by_depth['pressure'].tolist(),
-                        "values": temp_by_depth['mean'].tolist(),
-                        "min": temp_by_depth['min'].tolist(),
-                        "max": temp_by_depth['max'].tolist()
-                    },
-                    "metadata": {"location": "Extracted from query", "parameter": "temperature"}
+                plot_data["temperature"] = {
+                    "depths": temp_by_depth['pressure'].tolist(),
+                    "values": temp_by_depth['mean'].tolist(),
+                    "min": temp_by_depth['min'].tolist(),
+                    "max": temp_by_depth['max'].tolist()
                 }
+                available_params.append("temperature")
+
             if 'salinity' in df_result.columns and 'pressure' in df_result.columns:
                 print(f"DEBUG: Salinity range: {df_result['salinity'].min()} to {df_result['salinity'].max()}")
                 sal_by_depth = df_result.groupby('pressure')['salinity'].agg(['mean', 'min', 'max']).reset_index()
-                if visualization_data:
-                    visualization_data["salinity_data"] = {
-                        "depths": sal_by_depth['pressure'].tolist(),
-                        "values": sal_by_depth['mean'].tolist(),
-                        "min": sal_by_depth['min'].tolist(),
-                        "max": sal_by_depth['max'].tolist()
+                plot_data["salinity"] = {
+                    "depths": sal_by_depth['pressure'].tolist(),
+                    "values": sal_by_depth['mean'].tolist(),
+                    "min": sal_by_depth['min'].tolist(),
+                    "max": sal_by_depth['max'].tolist()
+                }
+                available_params.append("salinity")
+
+            # Determine visualization type based on query and available data
+            query_lower = user_query.lower()
+            primary_param = None
+
+            # Check which parameter is mentioned in the query
+            if "salinity" in query_lower and "salinity" in available_params:
+                primary_param = "salinity"
+            elif "temperature" in query_lower and "temperature" in available_params:
+                primary_param = "temperature"
+            elif available_params:
+                primary_param = available_params[0]  # Default to first available
+
+            if primary_param:
+                visualization_data = {
+                    "type": f"{primary_param}_profile",
+                    "data": plot_data[primary_param],
+                    "available_params": available_params,
+                    "metadata": {
+                        "location": "Extracted from query",
+                        "parameter": primary_param,
+                        "query_type": user_query
                     }
-                else:
-                    visualization_data = {
-                        "type": "salinity_profile",
-                        "data": {
-                            "depths": sal_by_depth['pressure'].tolist(),
-                            "values": sal_by_depth['mean'].tolist(),
-                            "min": sal_by_depth['min'].tolist(),
-                            "max": sal_by_depth['max'].tolist()
-                        },
-                        "metadata": {"location": "Extracted from query", "parameter": "salinity"}
-                    }
+                }
+
+                # If multiple parameters are available, include them
+                if len(available_params) > 1:
+                    visualization_data["all_data"] = plot_data
 
         # Step 5: Generate consistent response (only if SQL succeeded, no ChromaDB fallback for response)
         stats_text, stats_map = extract_numeric_stats(df_result)
