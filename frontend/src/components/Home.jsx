@@ -158,18 +158,11 @@ function SinusoidalWaveBackground({ opacity = 1, className = "" }) {
 // Navigation
 const Navigation = React.memo(() => {
   const navigate = useNavigate();
-  const scrollOrNavigate = useCallback(
-    (sectionId) => {
-      if (sectionId) {
-        document
-          .getElementById(sectionId)
-          ?.scrollIntoView({ behavior: "smooth", block: "start" });
-      } else {
-        navigate("/auth");
-      }
-    },
-    [navigate]
-  );
+  const scrollToSection = (sectionId) =>
+    document
+      .getElementById(sectionId)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const navigatetologin = useCallback(() => navigate("/auth"), [navigate]);
 
   return (
     <motion.nav
@@ -212,7 +205,7 @@ const Navigation = React.memo(() => {
             </motion.button>
           ))}
           <motion.button
-            onClick={() => scrollOrNavigate()}
+            onClick={navigatetologin}
             className="font-semibold text-blue-400 hover:text-cyan-400"
           >
             Get Started

@@ -17,14 +17,10 @@ function App() {
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Default route "/" should go to home */}
-          <Route path="/" element={<Navigate to="/home" replace />} />
-
-          {/* Homepage (first page) */}
-          <Route path="/home" element={<Home />} />
-
-          {/* Login / Signup page */}
+          {/* Public route */}
           <Route path="/auth" element={<AuthPage />} />
+          <Route path="/home" element={<Home />} />
+          <Route path="/" element={<Navigate to="/home" replace />} />
 
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>

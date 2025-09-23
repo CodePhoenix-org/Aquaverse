@@ -31,8 +31,10 @@ app.include_router(chat.router, tags=["Chat"])
 
 
 # ChromaDB configuration
-CHROMA_PATH = os.getenv('chromapath') 
-COLLECTION_NAME = os.getenv('collectioname') 
+# CHROMA_PATH = os.getenv('chromapath') 
+# COLLECTION_NAME = os.getenv('collectioname') 
+CHROMA_PATH = os.getenv("CHROMA_PATH", "./db/chroma_db")
+COLLECTION_NAME = os.getenv("COLLECTION_NAME", "argo_summaries")
 
 os.makedirs(CHROMA_PATH, exist_ok=True)
 
