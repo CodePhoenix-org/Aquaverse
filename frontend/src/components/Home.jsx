@@ -271,7 +271,7 @@ const Navigation = React.memo(() => {
     document
       .getElementById(sectionId)
       ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  const navigatetologin = useCallback(() => navigate("/"), [navigate]);
+  const navigatetologin = useCallback(() => navigate("/auth"), [navigate]);
 
   return (
     <motion.nav

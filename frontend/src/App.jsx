@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import AuthPage from "./Pages/AuthPage";
 import Dashboard from "./components/Dashboard";
 import Profile from "./Pages/Profile";
@@ -19,8 +19,9 @@ function App() {
       <Router>
         <Routes>
           {/* Public route */}
+          <Route path="/auth" element={<AuthPage />} />
           <Route path="/home" element={<Home />} />
-          <Route path="/" element={<AuthPage />} />
+          <Route path="/" element={<Navigate to="/home" replace />} />
 
           {/* Protected routes */}
           <Route element={<ProtectedRoute />}>
