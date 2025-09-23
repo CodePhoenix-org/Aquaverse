@@ -1,4 +1,10 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+  useParams,
+} from "react-router-dom";
 import AuthPage from "./Pages/AuthPage";
 import Dashboard from "./components/Dashboard";
 import Profile from "./Pages/Profile";
@@ -11,15 +17,21 @@ import Home from "./components/Home";
 import "./i18n";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { useEffect } from "react";
+import CyberGlobe from "./components/maps/CycleGlobe";
 
 function App() {
+  console.log("App.jsx loaded"); // Debugging to confirm file is loaded
   return (
     <AuthProvider>
       <Router>
         <Routes>
-          {/* Public route */}
+          {/* Public routes */}
           <Route path="/auth" element={<AuthPage />} />
           <Route path="/home" element={<Home />} />
+          <Route path="/predict" element={<Predictor />} />
+          <Route path="/floatchat" element={<FloatChat />} />
+          <Route path="/threejs" element={<CyberGlobe />} />
           <Route path="/" element={<Navigate to="/home" replace />} />
 
           {/* Protected routes */}
@@ -28,10 +40,6 @@ function App() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/history" element={<History />} />
           </Route>
-
-          {/* Public routes */}
-          <Route path="/predict" element={<Predictor />} />
-          <Route path="/floatchat" element={<FloatChat />} />
 
           {/* Catch-all → go home */}
           <Route path="*" element={<Navigate to="/home" replace />} />

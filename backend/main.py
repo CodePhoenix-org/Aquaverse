@@ -4,13 +4,13 @@ from sqlalchemy import create_engine
 from db.database import DB_URI, Base
 from auth import routes as authroute
 from auth import profile
-from routes import chat
+from routes import chat,ncconvertoroute
 from rag.dataVisualisation import rag_query
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import os
-
 load_dotenv()
+
 
 app = FastAPI(title="Aquaverse Project APIs")
 
@@ -28,13 +28,13 @@ Base.metadata.create_all(bind=engine)
 app.include_router(authroute.router, prefix="/auth", tags=["Auth"])
 app.include_router(profile.router, prefix="/profiles", tags=["Profiles"])
 app.include_router(chat.router, tags=["Chat"]) 
-
+app.include_router(ncconvertoroute.router, tags=["NC Convertor"])
 
 # ChromaDB configuration
 # CHROMA_PATH = os.getenv('chromapath') 
 # COLLECTION_NAME = os.getenv('collectioname') 
-CHROMA_PATH = os.getenv("CHROMA_PATH", "./db/chroma_db")
-COLLECTION_NAME = os.getenv("COLLECTION_NAME", "argo_summaries")
+CHROMA_PATH = os.getenv("chromapath")
+COLLECTION_NAME = os.getenv("collectionname")
 
 os.makedirs(CHROMA_PATH, exist_ok=True)
 

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 import { 
   MessageCircle, 
   Mic, 
@@ -28,29 +29,57 @@ import {
   Moon,
   Sun,
   Paperclip,
-  Info
+  Info,
+  Download
 } from 'lucide-react';
 
-// Inject custom scrollbar styles globally (only once)
+// Inject custom scrollbar and animation styles globally (only once)
 if (typeof window !== 'undefined') {
-  const styleId = 'floatchat-scrollbar-style';
+  const styleId = 'floatchat-styles';
   if (!document.getElementById(styleId)) {
     const style = document.createElement('style');
     style.id = styleId;
     style.innerHTML = `
       .custom-scrollbar::-webkit-scrollbar {
-        width: 8px;
-        border-radius: 8px;
+        width: 6px;
+        border-radius: 10px;
       }
       .custom-scrollbar::-webkit-scrollbar-thumb {
         background: #374151;
-        border-radius: 8px;
+        border-radius: 10px;
+        transition: background 0.3s ease;
       }
       .custom-scrollbar.light::-webkit-scrollbar-thumb {
         background: #e5e7eb;
       }
       .custom-scrollbar::-webkit-scrollbar-track {
         background: transparent;
+      }
+      .animate-pulse-slow {
+        animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+      }
+      .animate-slide-in {
+        animation: slideIn 0.4s ease-out;
+      }
+      .animate-float {
+        animation: float 3s ease-in-out infinite;
+      }
+      @keyframes slideIn {
+        from { transform: translateY(30px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+      @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+      }
+      .glassmorphism {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+      .dark .glassmorphism {
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
       }
     `;
     document.head.appendChild(style);
@@ -61,7 +90,6 @@ if (typeof window !== 'undefined') {
 const detectSpeechRecognition = () => {
   if (typeof window === 'undefined') return false;
   
-  // Check if running on secure context (required for SpeechRecognition)
   const isSecureContext = window.isSecureContext || 
     (window.location.protocol === 'https:' || window.location.hostname === 'localhost');
   
@@ -115,7 +143,6 @@ class VoiceInput {
       this.recognition.lang = 'en-US';
       this.recognition.maxAlternatives = 1;
 
-      // Add grammar for better accuracy (optional)
       if (window.SpeechGrammarList) {
         const grammar = '#JSGF V1.0; grammar ocean; public <query> = show me | display | analyze | compare | find | what are | temperature | salinity | pressure | float | argo | profile | map | trend | anomaly;';
         const speechRecognitionList = new (window.SpeechGrammarList || window.webkitSpeechGrammarList)();
@@ -208,26 +235,73 @@ class VoiceInput {
   }
 }
 
-// Handle Enter key press in textarea
-function handleKeyPress(event) {
-  if (event.key === 'Enter' && !event.shiftKey) {
-    event.preventDefault();
-    handleSendMessage();
+// Handle file input change with direct download
+function handleFileChange(event, setFileStatus, setMessages) {
+  const file = event.target.files?.[0];
+  if (!file) {
+    setFileStatus({ status: 'error', message: 'No file selected.' });
+    toast.error('No file selected.');
+    return;
   }
-}
 
-// Handle file input change
-function handleFileChange(event) {
-  const file = event.target.files && event.target.files[0];
-  if (file) {
-    console.log('Selected file:', file.name);
+  const validExtensions = ['.nc', '.csv', '.txt', '.json'];
+  const fileExtension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+  if (!validExtensions.includes(fileExtension)) {
+    setFileStatus({
+      status: 'error',
+      message: `Invalid file type. Please upload a ${validExtensions.join(', ')} file.`,
+    });
+    toast.error(`Invalid file type. Please upload a ${validExtensions.join(', ')} file.`);
+    return;
   }
+
+  setFileStatus({ status: 'uploading', message: 'Uploading and converting file...' });
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  import('axios').then(({ default: axios }) => {
+    axios
+      .post('http://127.0.0.1:8000/convert', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      })
+      .then((res) => {
+        const { convertedData, filename } = res.data;
+        setFileStatus({ status: 'success', message: 'File converted successfully!' });
+        toast.success('File converted successfully!');
+
+        const botMessage = {
+          id: Date.now(),
+          type: 'bot',
+          content: `📁 File "${file.name}" uploaded and converted successfully. Download your CSV below.`,
+          timestamp: new Date(),
+          filename,
+        };
+        setMessages((prev) => [...prev, botMessage]);
+      })
+      .catch((err) => {
+        console.error('File conversion error:', err);
+        setFileStatus({
+          status: 'error',
+          message: '⚠️ Error converting file. Please try again.',
+        });
+        toast.error('Error converting file. Please try again.');
+        const errorMessage = {
+          id: Date.now(),
+          type: 'bot',
+          content: '⚠️ Sorry, there was an error processing your file. Please check the file and try again.',
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      });
+  });
 }
 
 const FloatChat = () => {
   const navigate = useNavigate();
   
-  // Restore state from localStorage if available
   const getInitialState = (key, fallback) => {
     try {
       const stored = localStorage.getItem(key);
@@ -242,12 +316,12 @@ const FloatChat = () => {
   const [inputText, setInputText] = useState(() => getInitialState('floatchat_inputText', ''));
   const [isRecording, setIsRecording] = useState(false);
   const [isVoiceActive, setIsVoiceActive] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState('idle'); // 'idle', 'listening', 'processing', 'error', 'requesting'
+  const [voiceStatus, setVoiceStatus] = useState('idle');
   const [voiceEnabled, setVoiceEnabled] = useState(() => {
     return getInitialState('floatchat_voiceEnabled', false);
   });
   
-  // Voice support detection
+  const [fileStatus, setFileStatus] = useState({ status: 'idle', message: '' });
   const [voiceSupport, setVoiceSupport] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -259,20 +333,24 @@ const FloatChat = () => {
     { id: 4, title: "BGC parameter analysis", snippet: "Analyze bio-geo-chemical...", date: "1 week ago", starred: false }
   ]);
 
-  // Voice recognition instance
   const voiceInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Initialize voice support detection
+  const handleKeyPress = (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      handleSendMessage();
+    }
+  };
+
   useEffect(() => {
     const detection = detectSpeechRecognition();
     setVoiceSupport(detection);
     console.log('Voice support detection:', detection);
   }, []);
 
-  // Initialize voice recognition
   useEffect(() => {
     if (!voiceSupport?.supported) return;
 
@@ -294,6 +372,7 @@ const FloatChat = () => {
         console.error('Voice recognition error:', error);
         setVoiceStatus('error');
         setTimeout(() => setVoiceStatus('idle'), 3000);
+        toast.error(error);
       },
       () => {
         setIsVoiceActive(false);
@@ -308,7 +387,6 @@ const FloatChat = () => {
     };
   }, [voiceSupport]);
 
-  // Persist chat state to localStorage on change
   useEffect(() => {
     localStorage.setItem('floatchat_messages', JSON.stringify(messages));
   }, [messages]);
@@ -325,7 +403,6 @@ const FloatChat = () => {
     localStorage.setItem('floatchat_inputText', JSON.stringify(inputText));
   }, [inputText]);
 
-  // Persist voice enabled state
   useEffect(() => {
     if (voiceSupport?.supported) {
       localStorage.setItem('floatchat_voiceEnabled', JSON.stringify(voiceEnabled));
@@ -338,10 +415,10 @@ const FloatChat = () => {
 
   useEffect(scrollToBottom, [messages]);
 
-  // Voice recording functions
   const toggleVoiceRecording = () => {
     if (!voiceSupport?.supported || !voiceInputRef.current?.isSupported) {
       setVoiceStatus('error');
+      toast.error('Speech recognition not available.');
       return;
     }
 
@@ -366,14 +443,15 @@ const FloatChat = () => {
           setIsVoiceActive(false);
           setIsRecording(false);
           setTimeout(() => setVoiceStatus('idle'), 3000);
+          toast.error('Microphone access denied.');
         });
     }
   };
 
-  // Enable voice input
   const enableVoiceInput = () => {
     if (!voiceSupport?.supported) {
       setVoiceStatus('error');
+      toast.error('Speech recognition not supported.');
       return;
     }
 
@@ -383,15 +461,16 @@ const FloatChat = () => {
       .then(() => {
         setVoiceEnabled(true);
         setVoiceStatus('idle');
+        toast.success('Voice input enabled!');
       })
       .catch((err) => {
         console.error('Microphone permission denied:', err);
         setVoiceStatus('error');
         setTimeout(() => setVoiceStatus('idle'), 5000);
+        toast.error('Microphone permission denied.');
       });
   };
 
-  // Auto-send when voice input is finalized and has content
   useEffect(() => {
     if (inputText.trim() && !isVoiceActive && voiceStatus === 'idle' && isRecording) {
       const timer = setTimeout(() => {
@@ -406,6 +485,30 @@ const FloatChat = () => {
 
   const handleFileUpload = () => {
     fileInputRef.current?.click();
+  };
+
+  const handleDownload = (filename) => {
+    import('axios').then(({ default: axios }) => {
+      axios
+        .get(`http://127.0.0.1:8000/download/${filename}`, {
+          responseType: 'blob',
+        })
+        .then((response) => {
+          const url = window.URL.createObjectURL(new Blob([response.data]));
+          const link = document.createElement('a');
+          link.href = url;
+          link.setAttribute('download', filename);
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          toast.success(`Downloaded ${filename}`);
+        })
+        .catch((err) => {
+          console.error('Download error:', err);
+          toast.error('Failed to download file. Please try again.');
+        });
+    });
   };
 
   const handleSendMessage = () => {
@@ -478,6 +581,7 @@ const FloatChat = () => {
               content: '⚠️ Sorry, I encountered an error while processing your request. Please try again or check your connection.',
               timestamp: new Date()
             }]);
+            toast.error('Error processing query.');
           })
           .finally(() => setIsTyping(false));
       });
@@ -486,70 +590,70 @@ const FloatChat = () => {
 
   const samplePrompts = [
     {
-      icon: <Globe className="w-5 h-5" />,
+      icon: <Globe className="w-8 h-8 animate-float" />,
       title: "Ocean Data Analysis",
       description: "Show me salinity profiles near the equator in March 2023"
     },
     {
-      icon: <BarChart3 className="w-5 h-5" />,
+      icon: <BarChart3 className="w-8 h-8 animate-float" />,
       title: "Compare Parameters",
       description: "Compare BGC parameters in the Arabian Sea for the last 6 months"
     },
     {
-      icon: <Search className="w-5 h-5" />,
+      icon: <Search className="w-8 h-8 animate-float" />,
       title: "Find Floats",
       description: "What are the nearest ARGO floats to coordinates 15°N, 68°E?"
     },
     {
-      icon: <Waves className="w-5 h-5" />,
+      icon: <Waves className="w-8 h-8 animate-float" />,
       title: "Temperature Trends",
       description: "Display temperature anomalies in the Indian Ocean basin"
     }
   ];
 
-  // Theme classes
   const themeClasses = {
     bg: darkMode ? 'bg-gray-900' : 'bg-white',
-    sidebarBg: darkMode ? 'bg-gray-800' : 'bg-gray-50',
-    cardBg: darkMode ? 'bg-gray-800' : 'bg-white',
-    cardHoverBg: darkMode ? 'bg-gray-700' : 'bg-gray-100',
-    promptBg: darkMode ? 'bg-gray-800' : 'bg-gray-50',
-    promptHoverBg: darkMode ? 'bg-gray-700' : 'bg-gray-100',
+    sidebarBg: darkMode ? 'bg-gray-800/95 backdrop-blur-md' : 'bg-gray-50/95 backdrop-blur-md',
+    cardBg: darkMode ? 'bg-gray-800/50' : 'bg-white/80',
+    cardHoverBg: darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-100/80',
+    promptBg: darkMode ? 'bg-gray-800/50' : 'bg-gray-50/80',
+    promptHoverBg: darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-100/80',
     text: darkMode ? 'text-white' : 'text-gray-900',
     textSecondary: darkMode ? 'text-gray-300' : 'text-gray-600',
     textMuted: darkMode ? 'text-gray-400' : 'text-gray-500',
-    border: darkMode ? 'border-gray-700' : 'border-gray-200',
-    borderLight: darkMode ? 'border-gray-600' : 'border-gray-100',
-    inputBg: darkMode ? 'bg-gray-800' : 'bg-gray-50',
-    inputBorder: darkMode ? 'border-gray-600' : 'border-gray-200',
-    inputFocus: darkMode ? 'border-blue-400 ring-blue-400/20' : 'border-blue-300 ring-blue-50',
-    botMessageBg: darkMode ? 'bg-gray-800' : 'bg-gray-50',
-    hoverBg: darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100',
-    buttonHoverBg: darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-100'
+    border: darkMode ? 'border-gray-700/50' : 'border-gray-200/50',
+    borderLight: darkMode ? 'border-gray-600/50' : 'border-gray-100/50',
+    inputBg: darkMode ? 'bg-gray-800/50 backdrop-blur-md' : 'bg-gray-50/80 backdrop-blur-md',
+    inputBorder: darkMode ? 'border-gray-600/50' : 'border-gray-200/50',
+    inputFocus: darkMode ? 'border-blue-400 ring-blue-400/30' : 'border-blue-300 ring-blue-300/30',
+    botMessageBg: darkMode ? 'bg-gray-800/50 backdrop-blur-md' : 'bg-gray-50/80 backdrop-blur-md',
+    hoverBg: darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-100/80',
+    buttonHoverBg: darkMode ? 'hover:bg-gray-600/50' : 'hover:bg-gray-100/80',
+    accent: 'bg-gradient-to-r from-blue-500 to-cyan-600',
+    accentHover: 'hover:from-blue-600 hover:to-cyan-700'
   };
 
-  // Voice status styling
   const getVoiceButtonClasses = () => {
     if (voiceStatus === 'error') {
-      return 'bg-red-500 text-white animate-pulse';
+      return 'bg-red-500/90 text-white animate-pulse-slow backdrop-blur-md shadow-lg';
     } else if (isVoiceActive) {
-      return 'bg-gradient-to-r from-purple-500 to-pink-500 text-white animate-pulse';
+      return 'bg-gradient-to-r from-blue-500 to-cyan-600 text-white animate-pulse-slow backdrop-blur-md shadow-lg';
     } else if (!voiceEnabled && voiceStatus !== 'requesting' && voiceSupport?.supported) {
       return `${themeClasses.textMuted} opacity-50 cursor-not-allowed`;
     } else {
-      return `${themeClasses.textMuted} hover:text-purple-500 ${themeClasses.buttonHoverBg}`;
+      return `${themeClasses.textMuted} hover:text-blue-400 ${themeClasses.buttonHoverBg} backdrop-blur-md shadow-sm hover:shadow-md`;
     }
   };
 
   const getVoiceIcon = () => {
     if (voiceStatus === 'error') {
-      return <X className="w-5 h-5" />;
+      return <X className="w-6 h-6" />;
     } else if (isVoiceActive) {
-      return <Mic className="w-5 h-5" />;
+      return <Mic className="w-6 h-6 animate-pulse" />;
     } else if (!voiceEnabled) {
-      return <MicOff className="w-5 h-5" />;
+      return <MicOff className="w-6 h-6" />;
     } else {
-      return <MicOff className="w-5 h-5" />;
+      return <Mic className="w-6 h-6" />;
     }
   };
 
@@ -557,20 +661,19 @@ const FloatChat = () => {
     return !voiceEnabled || !voiceSupport?.supported || !voiceInputRef.current?.isSupported || voiceStatus === 'requesting';
   };
 
-  // Get voice support message
   const getVoiceSupportMessage = () => {
     if (!voiceSupport) return null;
     
     if (!voiceSupport.supported) {
       if (voiceSupport.reason === 'insecure-context') {
         return (
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 mt-3">
-            <div className="flex items-start space-x-2">
-              <Info className="w-5 h-5 text-yellow-500 mt-0.5 flex-shrink-0" />
-              <div className="text-sm">
-                <p className={`${themeClasses.textSecondary}`}>
+          <div className="bg-yellow-50/90 dark:bg-yellow-900/20 border border-yellow-200/50 dark:border-yellow-800/50 rounded-xl p-4 mt-4 backdrop-blur-md animate-slide-in shadow-lg">
+            <div className="flex items-start space-x-3">
+              <Info className="w-6 h-6 text-yellow-500 mt-1 flex-shrink-0 animate-pulse-slow" />
+              <div className="text-base">
+                <p className={`${themeClasses.textSecondary} font-semibold`}>
                   🔒 Voice input requires a secure connection (HTTPS). 
-                  For development, you can use <code className="bg-yellow-200 dark:bg-yellow-800/50 px-1 py-0.5 rounded text-xs font-mono">localhost</code> or deploy to HTTPS.
+                  For development, use <code className="bg-yellow-200/50 dark:bg-yellow-800/30 px-2 py-1 rounded text-sm font-mono">localhost</code> or deploy to HTTPS.
                 </p>
               </div>
             </div>
@@ -578,13 +681,13 @@ const FloatChat = () => {
         );
       } else {
         return (
-          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mt-3">
-            <div className="flex items-start space-x-2">
-              <Info className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" />
-              <div className="text-sm">
-                <p className={`${themeClasses.textSecondary}`}>
+          <div className="bg-blue-50/90 dark:bg-blue-900/20 border border-blue-200/50 dark:border-blue-800/50 rounded-xl p-4 mt-4 backdrop-blur-md animate-slide-in shadow-lg">
+            <div className="flex items-start space-x-3">
+              <Info className="w-6 h-6 text-blue-500 mt-1 flex-shrink-0 animate-pulse-slow" />
+              <div className="text-base">
+                <p className={`${themeClasses.textSecondary} font-semibold`}>
                   💬 Voice input works best in Chrome, Edge, and Safari. 
-                  Firefox has limited support. You can still use typing for all ocean data queries!
+                  Firefox has limited support. Use typing for seamless ocean data queries!
                 </p>
               </div>
             </div>
@@ -597,61 +700,53 @@ const FloatChat = () => {
   };
 
   return (
-    <div className={`h-screen ${themeClasses.bg} flex relative transition-colors duration-200`}>
-      {/* Hidden file input */}
+    <div className={`h-screen ${themeClasses.bg} flex relative transition-all duration-300 font-sans antialiased overflow-hidden`}>
       <input
         type="file"
         ref={fileInputRef}
-        onChange={handleFileChange}
+        onChange={(e) => handleFileChange(e, setFileStatus, setMessages)}
         accept=".nc,.csv,.txt,.json"
         className="hidden"
       />
 
-      {/* Sidebar */}
       <div
         className={`
-          fixed inset-y-0 left-0 z-50
-          ${sidebarOpen ? 'w-80' : 'w-16'}
-          ${themeClasses.sidebarBg} ${themeClasses.border} border-r
-          transition-all duration-300 ease-in-out
+          fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out
+          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          w-80 ${themeClasses.sidebarBg} ${themeClasses.border} border-r
+          lg:translate-x-0 lg:static lg:z-auto
           overflow-hidden
           flex flex-col
-          lg:relative lg:z-auto
-          ${!sidebarOpen ? 'items-center py-4' : ''}
+          py-4
+          shadow-2xl
         `}
-        style={{ minWidth: sidebarOpen ? '20rem' : '4rem', maxWidth: sidebarOpen ? '20rem' : '4rem' }}
       >
-        {/* Sidebar Header */}
-        <div className={`flex items-center justify-between p-4 ${themeClasses.border} border-b ${!sidebarOpen ? 'flex-col space-y-4' : ''}`}>
-          <div className={`flex items-center ${sidebarOpen ? 'space-x-3' : 'justify-center w-full'}`}>
-            <div className={`w-10 h-10 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl flex items-center justify-center shadow-lg border-2 border-cyan-400/30 ${!sidebarOpen ? 'mx-auto' : ''}`}>
-              <Waves className="w-6 h-6 text-white" />
+        <div className={`flex items-center justify-between p-6 ${themeClasses.border} border-b`}>
+          <div className="flex items-center space-x-3">
+            <div className={`w-14 h-14 ${themeClasses.accent} rounded-xl flex items-center justify-center shadow-xl animate-float`}>
+              <Waves className="w-8 h-8 text-white" />
             </div>
-            {sidebarOpen && (
-              <div>
-                <h1 className={`text-lg font-semibold ${themeClasses.text}`}>FloatChat</h1>
-                <p className={`text-xs ${themeClasses.textMuted}`}>ARGO Data Discovery</p>
-              </div>
-            )}
+            <div>
+              <h1 className={`text-2xl font-bold ${themeClasses.text} tracking-tight`}>FloatChat</h1>
+              <p className={`text-base ${themeClasses.textMuted} font-semibold`}>ARGO Data Discovery</p>
+            </div>
           </div>
           <button
             onClick={() => setSidebarOpen((open) => !open)}
-            className={`p-2 ${themeClasses.hoverBg} rounded-lg transition-colors border border-transparent hover:border-cyan-400/40 ${!sidebarOpen ? 'mx-auto mt-2' : ''}`}
-            aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+            className={`p-3 ${themeClasses.hoverBg} rounded-xl transition-all duration-200 hover:scale-110 ${themeClasses.accentHover} shadow-md lg:hidden`}
+            aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
           >
-            {sidebarOpen ? <X className={`w-5 h-5 ${themeClasses.text}`} /> : <Menu className={`w-5 h-5 ${themeClasses.text}`} />}
+            <X className={`w-6 h-6 ${themeClasses.text}`} />
           </button>
         </div>
 
-        {/* New Chat Button */}
-        <div className={`p-4 ${!sidebarOpen ? 'flex justify-center' : ''}`}>
+        <div className="p-6">
           <button
             className={`
-              ${sidebarOpen ? 'w-full' : 'w-12 h-12'}
-              ${themeClasses.cardBg} ${themeClasses.border} border ${themeClasses.hoverBg} ${themeClasses.textSecondary}
-              py-3 px-4 rounded-xl flex items-center justify-center space-x-2 transition-colors shadow-sm
-              ${!sidebarOpen ? 'justify-center' : ''}
-              hover:scale-105
+              w-full ${themeClasses.cardBg} ${themeClasses.border} border ${themeClasses.accentHover}
+              py-4 px-5 rounded-xl flex items-center justify-center space-x-3 transition-all duration-200 shadow-lg
+              hover:scale-105 hover:shadow-2xl
+              ${themeClasses.textSecondary}
             `}
             onClick={() => {
               setMessages([]);
@@ -667,137 +762,132 @@ const FloatChat = () => {
               localStorage.removeItem('floatchat_inputText');
             }}
           >
-            <Edit3 className="w-5 h-5" />
-            {sidebarOpen && <span>New chat</span>}
+            <Edit3 className="w-6 h-6" />
+            <span className="text-base font-semibold">New Chat</span>
           </button>
         </div>
 
-        {/* Chat History */}
-        <div className={`flex-1 ${sidebarOpen ? 'px-4' : 'px-1'} overflow-y-auto custom-scrollbar`}>
-          {sidebarOpen && (
-            <div className="space-y-1">
-              <h3 className={`text-sm font-medium ${themeClasses.textMuted} px-2 py-1`}>Recent</h3>
-              {chatHistory.map((chat) => (
-                <div key={chat.id} className={`group p-3 ${themeClasses.cardHoverBg} rounded-xl cursor-pointer transition-colors border border-transparent hover:border-cyan-400/40 ${darkMode ? 'hover:border-cyan-600' : ''} hover:shadow-sm`}>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium ${themeClasses.text} truncate`}>{chat.title}</p>
-                      <p className={`text-xs ${themeClasses.textMuted} truncate`}>{chat.snippet}</p>
-                      <p className={`text-xs ${themeClasses.textMuted} mt-1`}>{chat.date}</p>
-                    </div>
-                    <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button className={`p-1.5 ${themeClasses.buttonHoverBg} rounded-lg transition-colors`}>
-                        <Star className={`w-3.5 h-3.5 ${chat.starred ? 'text-yellow-500 fill-yellow-500' : themeClasses.textMuted}`} />
-                      </button>
-                      <button className={`p-1.5 ${themeClasses.buttonHoverBg} rounded-lg transition-colors`}>
-                        <MoreVertical className={`w-3.5 h-3.5 ${themeClasses.textMuted}`} />
-                      </button>
-                    </div>
+        <div className="flex-1 px-6 overflow-y-auto custom-scrollbar">
+          <div className="space-y-3">
+            <h3 className={`text-lg font-semibold ${themeClasses.textMuted} px-2 py-2 tracking-wide`}>Recent Chats</h3>
+            {chatHistory.map((chat, index) => (
+              <div 
+                key={chat.id} 
+                className={`group p-4 ${themeClasses.cardHoverBg} rounded-xl cursor-pointer transition-all duration-300 border ${themeClasses.border} hover:shadow-2xl hover:scale-[1.02] animate-slide-in ${index % 2 === 0 ? 'animate-delay-200' : 'animate-delay-400'}`}
+                style={{ animationDelay: `${index * 100}ms` }}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-lg font-semibold ${themeClasses.text} truncate`}>{chat.title}</p>
+                    <p className={`text-base ${themeClasses.textMuted} truncate mt-1`}>{chat.snippet}</p>
+                    <p className={`text-base ${themeClasses.textMuted} mt-1`}>{chat.date}</p>
+                  </div>
+                  <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                    <button className={`p-2 ${themeClasses.buttonHoverBg} rounded-lg transition-all duration-200 hover:scale-110`}>
+                      <Star className={`w-5 h-5 ${chat.starred ? 'text-yellow-500 fill-yellow-500 animate-pulse-slow' : themeClasses.textMuted}`} />
+                    </button>
+                    <button className={`p-2 ${themeClasses.buttonHoverBg} rounded-lg transition-all duration-200 hover:scale-110`}>
+                      <MoreVertical className={`w-5 h-5 ${themeClasses.textMuted}`} />
+                    </button>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Sidebar Footer */}
-        <div className={`p-4 ${themeClasses.border} border-t space-y-2`}>
+        <div className={`p-6 ${themeClasses.border} border-t space-y-3`}>
           <button
-            className={`w-full text-left p-3 ${themeClasses.cardHoverBg} rounded-xl flex items-center space-x-3 transition-colors ${themeClasses.textSecondary} ${!sidebarOpen ? 'justify-center' : ''}`}
+            className={`w-full text-left p-4 ${themeClasses.cardHoverBg} rounded-xl flex items-center space-x-3 transition-all duration-200 ${themeClasses.textSecondary} hover:shadow-xl hover:scale-[1.02]`}
             onClick={() => navigate('/dashboard')}
           >
-            <BarChart3 className="w-5 h-5" />
-            {sidebarOpen && <span>Dashboard</span>}
+            <BarChart3 className="w-6 h-6 animate-float" />
+            <span className="text-base font-semibold">Dashboard</span>
           </button>
-          <button className={`w-full text-left p-3 ${themeClasses.cardHoverBg} rounded-xl flex items-center space-x-3 transition-colors ${themeClasses.textSecondary} ${!sidebarOpen ? 'justify-center' : ''}`}>
-            <Settings className="w-5 h-5" />
-            {sidebarOpen && <span>Settings</span>}
+          <button onClick={() => navigate("/profile")} className={`w-full text-left p-4 ${themeClasses.cardHoverBg} rounded-xl flex items-center space-x-3 transition-all duration-200 ${themeClasses.textSecondary} hover:shadow-xl hover:scale-[1.02]`}>
+            <Settings className="w-6 h-6 animate-float" />
+            <span className="text-base font-semibold">Settings</span>
           </button>
         </div>
       </div>
 
-      {/* Sidebar Overlay */}
       {sidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-25 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 lg:hidden transition-all duration-300"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <div className={`${themeClasses.bg} ${themeClasses.borderLight} border-b px-4 py-3 flex items-center justify-between`}>
+        <div className={`${themeClasses.bg} ${themeClasses.borderLight} border-b px-6 py-5 flex items-center justify-between shadow-lg`}>
           <div className="flex items-center space-x-3">
             <button 
               onClick={() => setSidebarOpen(true)}
-              className={`lg:hidden p-2 ${themeClasses.hoverBg} rounded-lg transition-colors`}
+              className={`lg:hidden p-3 ${themeClasses.hoverBg} rounded-xl transition-all duration-200 hover:scale-110 shadow-md`}
             >
-              <Menu className={`w-5 h-5 ${themeClasses.text}`} />
+              <Menu className={`w-7 h-7 ${themeClasses.text}`} />
             </button>
-            <div className="flex items-center space-x-2">
-              <Sparkles className="w-5 h-5 text-blue-500" />
-              <span className={`font-semibold ${themeClasses.text}`}>FloatChat</span>
+            <div className="flex items-center space-x-3">
+              <Sparkles className="w-7 h-7 text-blue-500 animate-pulse-slow" />
+              <span className={`text-2xl font-bold ${themeClasses.text} tracking-tight`}>FloatChat</span>
             </div>
           </div>
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
             <button 
               onClick={() => setDarkMode(!darkMode)}
-              className={`p-2 ${themeClasses.hoverBg} rounded-lg ${themeClasses.textMuted} transition-colors`}
+              className={`p-3 ${themeClasses.hoverBg} rounded-xl ${themeClasses.textMuted} transition-all duration-200 hover:scale-110 shadow-md`}
             >
-              {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              {darkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
             </button>
-            <button className={`p-2 ${themeClasses.hoverBg} rounded-lg ${themeClasses.textMuted} transition-colors`}>
-              <Share className="w-5 h-5" />
+            <button className={`p-3 ${themeClasses.hoverBg} rounded-xl ${themeClasses.textMuted} transition-all duration-200 hover:scale-110 shadow-md`}>
+              <Share className="w-6 h-6" />
             </button>
-            <button className={`p-2 ${themeClasses.hoverBg} rounded-lg ${themeClasses.textMuted} transition-colors`}>
-              <MoreVertical className="w-5 h-5" />
+            <button className={`p-3 ${themeClasses.hoverBg} rounded-xl ${themeClasses.textMuted} transition-all duration-200 hover:scale-110 shadow-md`}>
+              <MoreVertical className="w-6 h-6" />
             </button>
           </div>
         </div>
 
-        {/* Messages Area */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           {messages.length === 0 ? (
-            /* Welcome Screen */
-            <div className="max-w-4xl mx-auto px-6 py-12">
-              <div className="text-center mb-12">
-                <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                  <Waves className="w-8 h-8 text-white" />
+            <div className="max-w-5xl mx-auto px-6 py-16">
+              <div className="text-center mb-12 animate-slide-in">
+                <div className={`w-24 h-24 ${themeClasses.accent} rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl animate-float`}>
+                  <Waves className="w-12 h-12 text-white" />
                 </div>
-                <h1 className={`text-4xl font-bold ${themeClasses.text} mb-4`}>
-                  Hello, I'm FloatChat
+                <h1 className={`text-4xl font-extrabold ${themeClasses.text} mb-4 tracking-tight`}>
+                  Welcome to FloatChat
                 </h1>
-                <p className={`text-xl ${themeClasses.textSecondary} max-w-2xl mx-auto mb-6`}>
-                  Your AI assistant for discovering and analyzing ARGO ocean data.
+                <p className={`text-xl ${themeClasses.textSecondary} max-w-2xl mx-auto mb-6 font-semibold leading-relaxed`}>
+                  Your AI-powered assistant for exploring and analyzing ARGO ocean data with precision and ease.
                 </p>
                 
-                <div className="flex flex-col sm:flex-row justify-center items-center space-y-2 sm:space-y-0 sm:space-x-4 text-sm mb-4">
-                  <span className={`${themeClasses.textMuted}`}>💬 Type your query or</span>
+                <div className="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4 text-base mb-6">
+                  <span className={`${themeClasses.textMuted} font-semibold`}>💬 Type your query or</span>
                   
                   {voiceSupport?.supported ? (
                     voiceEnabled ? (
                       <button
                         onClick={toggleVoiceRecording}
-                        className={`inline-flex items-center space-x-1 px-3 py-1 rounded-lg ${getVoiceButtonClasses()} transition-colors`}
+                        className={`inline-flex items-center space-x-2 px-5 py-3 rounded-xl ${getVoiceButtonClasses()} transition-all duration-200 font-semibold shadow-lg hover:shadow-2xl hover:scale-105 text-base`}
                       >
-                        <Mic className="w-4 h-4" />
-                        <span className="font-medium">Speak</span>
+                        <Mic className="w-6 h-6" />
+                        <span>Speak Now</span>
                       </button>
                     ) : (
                       <button
                         onClick={enableVoiceInput}
-                        className="inline-flex items-center space-x-1 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-200 font-medium shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
+                        className={`inline-flex items-center space-x-2 px-5 py-3 ${themeClasses.accent} text-white rounded-xl font-semibold shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base`}
                         disabled={voiceStatus === 'requesting'}
                       >
                         {voiceStatus === 'requesting' ? (
                           <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                             <span>Enabling...</span>
                           </>
                         ) : (
                           <>
-                            <Mic className="w-4 h-4" />
+                            <Mic className="w-6 h-6" />
                             <span>Enable Voice</span>
                           </>
                         )}
@@ -805,40 +895,39 @@ const FloatChat = () => {
                     )
                   ) : (
                     <button
-                      className="inline-flex items-center space-x-1 px-3 py-1 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-lg cursor-not-allowed"
+                      className={`inline-flex items-center space-x-2 px-5 py-3 rounded-xl bg-gray-100 dark:bg-gray-800/50 text-gray-500 rounded-xl cursor-not-allowed font-semibold shadow-sm text-base`}
                       disabled
                     >
-                      <MicOff className="w-4 h-4" />
-                      <span className="font-medium">Voice Unavailable</span>
+                      <MicOff className="w-6 h-6" />
+                      <span>Voice Unavailable</span>
                     </button>
                   )}
                 </div>
 
-                {/* Voice Support Info */}
                 {getVoiceSupportMessage()}
                 
                 {!voiceEnabled && voiceSupport?.supported && (
-                  <p className={`text-xs ${themeClasses.textMuted} mt-2 max-w-md mx-auto`}>
+                  <p className={`text-base ${themeClasses.textMuted} mt-3 max-w-md mx-auto font-semibold`}>
                     🔒 Voice input is disabled by default for privacy. Click "Enable Voice" to allow microphone access for hands-free ocean data queries.
                   </p>
                 )}
               </div>
 
-              {/* Sample Prompts */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 {samplePrompts.map((prompt, index) => (
                   <button
                     key={index}
                     onClick={() => setInputText(prompt.description)}
-                    className={`text-left p-6 ${themeClasses.promptBg} ${themeClasses.promptHoverBg} rounded-2xl ${themeClasses.border} border hover:border-gray-300 ${darkMode ? 'hover:border-gray-600' : ''} transition-all duration-200 group`}
+                    className={`text-left p-6 ${themeClasses.promptBg} ${themeClasses.promptHoverBg} rounded-2xl ${themeClasses.border} border hover:shadow-2xl hover:scale-[1.02] transition-all duration-300 group animate-slide-in`}
+                    style={{ animationDelay: `${index * 150}ms` }}
                   >
                     <div className="flex items-start space-x-4">
-                      <div className={`w-10 h-10 ${themeClasses.cardBg} rounded-xl flex items-center justify-center text-blue-500 group-hover:bg-blue-50 ${darkMode ? 'group-hover:bg-blue-900/50' : ''} transition-colors`}>
+                      <div className={`w-14 h-14 ${themeClasses.cardBg} rounded-xl flex items-center justify-center text-blue-500 group-hover:bg-blue-50 ${darkMode ? 'group-hover:bg-blue-900/50' : ''} transition-all duration-300 shadow-lg group-hover:shadow-xl`}>
                         {prompt.icon}
                       </div>
                       <div className="flex-1">
-                        <h3 className={`font-semibold ${themeClasses.text} mb-1`}>{prompt.title}</h3>
-                        <p className={`${themeClasses.textSecondary} text-sm leading-relaxed`}>{prompt.description}</p>
+                        <h3 className={`text-xl font-semibold ${themeClasses.text} mb-2 tracking-tight`}>{prompt.title}</h3>
+                        <p className={`${themeClasses.textSecondary} text-base leading-relaxed font-semibold`}>{prompt.description}</p>
                       </div>
                     </div>
                   </button>
@@ -846,30 +935,29 @@ const FloatChat = () => {
               </div>
             </div>
           ) : (
-            /* Chat Messages */
-            <div className="max-w-4xl mx-auto px-6 py-6 space-y-6">
+            <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
               {messages.map((message, idx) => {
                 const isLastBotMsg = message.type === 'bot' && 
                   idx === messages.length - 1 && 
                   (message.hasVisualization || /visualization|chart|plot|map|graph/i.test(message.content));
                 
                 return (
-                  <div key={message.id} className={`flex items-start space-x-4 ${message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  <div key={message.id} className={`flex items-start space-x-4 ${message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''} animate-slide-in`}>
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 shadow-xl ${
                       message.type === 'user' 
                         ? 'bg-blue-500 text-white' 
                         : 'bg-gradient-to-br from-purple-500 to-pink-500 text-white'
-                    }`}>
-                      {message.type === 'user' ? <User className="w-4 h-4" /> : <Sparkles className="w-4 h-4" />}
+                    } transition-all duration-200 hover:scale-110`}>
+                      {message.type === 'user' ? <User className="w-6 h-6" /> : <Sparkles className="w-6 h-6 animate-pulse-slow" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className={`prose prose-gray max-w-none ${message.type === 'user' ? 'text-right' : ''}`}>
-                        <div className={`inline-block p-4 rounded-2xl ${
+                        <div className={`inline-block p-6 rounded-2xl shadow-xl ${
                           message.type === 'user' 
                             ? 'bg-blue-500 text-white' 
                             : `${themeClasses.botMessageBg} ${themeClasses.text}`
-                        }`}>
-                          <p className="whitespace-pre-wrap m-0">{message.content}</p>
+                        } transition-all duration-200 hover:shadow-2xl`}>
+                          <p className="whitespace-pre-wrap m-0 text-lg font-semibold leading-relaxed">{message.content}</p>
                           {isLastBotMsg && lastVizData && (
                             <button
                               onClick={() => {
@@ -877,14 +965,23 @@ const FloatChat = () => {
                                   state: { vizData: lastVizData, vizTab: lastVizTab }
                                 });
                               }}
-                              className="mt-4 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl shadow hover:scale-105 transition font-semibold text-sm"
+                              className="mt-4 mr-2 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-200 font-semibold text-base"
                             >
                               📊 View Visualization
                             </button>
                           )}
+                          {message.filename && (
+                            <button
+                              onClick={() => handleDownload(message.filename)}
+                              className="mt-4 px-6 py-3 bg-gradient-to-r from-green-500 to-teal-600 text-white rounded-xl shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-200 font-semibold text-base"
+                            >
+                              <Download className="w-6 h-6 inline-block mr-2" />
+                              Download Your CSV
+                            </button>
+                          )}
                         </div>
                       </div>
-                      <p className={`text-xs ${themeClasses.textMuted} mt-2 ${message.type === 'user' ? 'text-right' : ''}`}>
+                      <p className={`text-base ${themeClasses.textMuted} mt-2 font-semibold ${message.type === 'user' ? 'text-right' : ''}`}>
                         {(() => {
                           let dateObj = message.timestamp;
                           if (typeof dateObj === 'string') {
@@ -901,15 +998,15 @@ const FloatChat = () => {
               })}
 
               {isTyping && (
-                <div className="flex items-start space-x-4">
-                  <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
-                    <Sparkles className="w-4 h-4 text-white" />
+                <div className="flex items-start space-x-4 animate-slide-in">
+                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-xl">
+                    <Sparkles className="w-6 h-6 text-white animate-pulse-slow" />
                   </div>
-                  <div className={`${themeClasses.botMessageBg} p-4 rounded-2xl`}>
+                  <div className={`${themeClasses.botMessageBg} p-6 rounded-2xl shadow-xl`}>
                     <div className="flex space-x-2">
-                      <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`}></div>
-                      <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.1s' }}></div>
-                      <div className={`w-2 h-2 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.2s' }}></div>
+                      <div className={`w-3 h-3 ${themeClasses.textMuted} rounded-full animate-bounce`}></div>
+                      <div className={`w-3 h-3 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.1s' }}></div>
+                      <div className={`w-3 h-3 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.2s' }}></div>
                     </div>
                   </div>
                 </div>
@@ -919,40 +1016,40 @@ const FloatChat = () => {
           )}
         </div>
 
-        {/* Input Area */}
-        <div className={`${themeClasses.borderLight} border-t ${themeClasses.bg}`}>
-          <div className="max-w-4xl mx-auto px-6 py-4">
+        <div className={`${themeClasses.borderLight} border-t ${themeClasses.bg} shadow-xl`}>
+          <div className="max-w-5xl mx-auto px-6 py-8">
             <div className="relative">
-              <div className={`flex items-end space-x-3 ${themeClasses.inputBg} rounded-3xl p-4 ${themeClasses.inputBorder} border focus-within:${themeClasses.inputFocus} focus-within:ring-4 transition-all`}>
+              <div className={`flex items-end space-x-4 ${themeClasses.inputBg} rounded-3xl p-5 ${themeClasses.inputBorder} border focus-within:${themeClasses.inputFocus} focus-within:ring-4 transition-all duration-200 shadow-xl hover:shadow-2xl`}>
                 <textarea
                   ref={inputRef}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder={isVoiceActive ? "🎤 Listening... Speak your ocean data query" : !voiceSupport?.supported ? "Ask FloatChat about ocean data..." : !voiceEnabled ? "Ask FloatChat about ocean data... (Enable voice input above)" : "Ask FloatChat about ocean data... or tap the mic to speak"}
-                  className={`flex-1 bg-transparent border-none resize-none focus:outline-none placeholder-gray-500 ${themeClasses.text} ${
-                    isVoiceActive ? 'border-l-2 border-purple-400 pl-3' : ''
+                  className={`flex-1 bg-transparent border-none resize-none focus:outline-none placeholder-gray-500 ${themeClasses.text} font-semibold text-lg ${
+                    isVoiceActive ? 'border-l-2 border-purple-400 pl-4' : ''
                   }`}
                   rows={1}
                   style={{
-                    minHeight: '24px',
+                    minHeight: '28px',
                     maxHeight: '200px',
                     resize: 'none'
                   }}
                   disabled={isVoiceActive}
                 />
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-4">
                   <button
                     onClick={handleFileUpload}
-                    className={`p-2 rounded-full transition-colors ${themeClasses.textMuted} hover:text-gray-600 ${themeClasses.buttonHoverBg}`}
+                    className={`p-3 rounded-full transition-all duration-200 ${themeClasses.textMuted} hover:text-gray-600 ${themeClasses.buttonHoverBg} hover:scale-110 shadow-md disabled:opacity-50`}
                     title="Upload ARGO data file"
+                    disabled={fileStatus.status === 'uploading'}
                   >
-                    <Paperclip className="w-5 h-5" />
+                    <Paperclip className="w-6 h-6" />
                   </button>
                   <button
                     onClick={voiceSupport?.supported ? (voiceEnabled ? toggleVoiceRecording : enableVoiceInput) : null}
                     disabled={isMicDisabled()}
-                    className={`p-2 rounded-full transition-all duration-200 ${getVoiceButtonClasses()} disabled:opacity-50 disabled:cursor-not-allowed`}
+                    className={`p-3 rounded-full transition-all duration-200 ${getVoiceButtonClasses()} shadow-md hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed`}
                     title={isVoiceActive ? "Stop listening" : !voiceSupport?.supported ? "Voice not supported in this browser" : !voiceEnabled ? "Enable voice input first" : "Start voice input"}
                   >
                     {getVoiceIcon()}
@@ -960,44 +1057,60 @@ const FloatChat = () => {
                   <button
                     onClick={handleSendMessage}
                     disabled={inputText.trim() === '' || isVoiceActive}
-                    className={`p-2 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-full transition-colors ${
-                      inputText.trim() !== '' && !isVoiceActive ? 'animate-pulse' : ''
+                    className={`p-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-full transition-all duration-200 shadow-md hover:shadow-xl hover:scale-110 ${
+                      inputText.trim() !== '' && !isVoiceActive ? 'animate-pulse-slow' : ''
                     }`}
                   >
-                    <Send className="w-5 h-5" />
+                    <Send className="w-6 h-5" />
                   </button>
                 </div>
               </div>
               
-              {/* Voice Status Indicator */}
               {voiceStatus === 'listening' && (
-                <div className="flex items-center justify-center mt-2 space-x-2">
-                  <div className="w-2 h-2 bg-purple-500 rounded-full animate-ping"></div>
-                  <span className={`text-xs ${themeClasses.textSecondary}`}>
+                <div className="flex items-center justify-center mt-4 space-x-2">
+                  <div className="w-3 h-3 bg-purple-500 rounded-full animate-ping"></div>
+                  <span className={`text-base ${themeClasses.textSecondary} font-semibold`}>
                     🎤 Listening... Speak clearly about ocean data queries
                   </span>
                 </div>
               )}
               
               {voiceStatus === 'error' && (
-                <div className="flex items-center justify-center mt-2">
-                  <span className={`text-xs text-red-500`}>
+                <div className="flex items-center justify-center mt-4">
+                  <span className={`text-base text-red-500 font-semibold`}>
                     ❌ Microphone access required. Please allow access and try again.
                   </span>
                 </div>
               )}
               
               {voiceStatus === 'requesting' && (
-                <div className="flex items-center justify-center mt-2">
-                  <div className="w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mr-2"></div>
-                  <span className={`text-xs ${themeClasses.textSecondary}`}>
+                <div className="flex items-center justify-center mt-4">
+                  <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mr-2"></div>
+                  <span className={`text-base ${themeClasses.textSecondary} font-semibold`}>
                     Requesting microphone permission...
                   </span>
                 </div>
               )}
+
+              {fileStatus.status !== 'idle' && (
+                <div className="flex items-center justify-center mt-4">
+                  {fileStatus.status === 'uploading' && (
+                    <>
+                      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mr-2"></div>
+                      <span className={`text-base ${themeClasses.textSecondary} font-semibold`}>{fileStatus.message}</span>
+                    </>
+                  )}
+                  {fileStatus.status === 'success' && (
+                    <span className={`text-base text-green-500 font-semibold`}>{fileStatus.message}</span>
+                  )}
+                  {fileStatus.status === 'error' && (
+                    <span className={`text-base text-red-500 font-semibold`}>{fileStatus.message}</span>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="flex items-center justify-center mt-3">
-              <p className={`text-xs ${themeClasses.textMuted}`}>
+            <div className="flex items-center justify-center mt-4">
+              <p className={`text-base ${themeClasses.textMuted} font-semibold`}>
                 {isVoiceActive ? '🎤 Voice input active - speak your query!' : !voiceSupport?.supported ? '💬 FloatChat works great with typing too!' : !voiceEnabled ? '🔒 Voice input disabled. Click the mic icon to enable microphone access.' : 'FloatChat can make mistakes. Consider checking important ocean data insights.'}
               </p>
             </div>

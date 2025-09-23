@@ -1,8 +1,8 @@
 # app.py
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, request, jsonify
 from data_processing import process_float_record
 
-app = Flask(__name__)
+app = FastAPI(__name__)
 
 @app.route("/predict", methods=["POST"])
 def predict():

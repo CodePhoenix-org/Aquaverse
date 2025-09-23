@@ -489,16 +489,31 @@ def extract_plot_data(df: pd.DataFrame, query_type: str) -> dict:
 # ------------------------------------------------------------
 # Main Enhanced RAG query pipeline
 # ------------------------------------------------------------
+# ------------------------------------------------------------
+# Main Enhanced RAG query pipeline - FIXED VERSION
+# ------------------------------------------------------------
 def rag_query(
     user_query: str,
-    chroma_path: str = CHROMA_PATH,
-    collection_name: str = COLLECTION_NAME,
-    db_uri: str = DB_URI,
+    chroma_path: str = None,
+    collection_name: str = None,
+    db_uri: str = None,
     use_phenomenon_prompt: bool = False
 ) -> Tuple[str, Optional[Dict]]:
     """Enhanced RAG query pipeline with parameter-specific handling"""
     try:
         print(f"DEBUG: Processing query: {user_query}")
+        
+        # Use default values if None
+        if chroma_path is None:
+            chroma_path = CHROMA_PATH
+        if collection_name is None:
+            collection_name = COLLECTION_NAME
+        if db_uri is None:
+            db_uri = DB_URI
+        
+        print(f"DEBUG: Using chroma_path: {chroma_path}")
+        print(f"DEBUG: Using collection_name: {collection_name}")
+        print(f"DEBUG: Using db_uri: {db_uri}")
 
         # Step 1: Detect requested parameter
         requested_param = detect_requested_parameter(user_query)
@@ -711,8 +726,6 @@ def rag_query(
                 response_text = f"No {requested_param} data found in the current dataset for the specified region/time period. The dataset may not contain {requested_param} measurements for your query parameters."
             else:
                 response_text = "No matching data found for your query in the current dataset."
-
-    # Step 8: Enhanced visualization (removed extract_plot_data_enhanced overwrite)
 
         return response_text, visualization_data
 
