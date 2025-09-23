@@ -9,7 +9,6 @@ import FloatChat from "./components/FloatChat";
 import Predictor from "./components/Predictor";
 import Home from "./components/Home";
 import "./i18n";
-// ✅ Import Toastify
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
@@ -29,13 +28,15 @@ function App() {
             <Route path="/profile" element={<Profile />} />
             <Route path="/history" element={<History />} />
           </Route>
-          <Route path="/predict" element={<Predictor />}></Route>
 
-          {/* FloatChat route (public) */}
+          {/* Public routes */}
+          <Route path="/predict" element={<Predictor />} />
           <Route path="/floatchat" element={<FloatChat />} />
+
+          {/* Catch-all → go home */}
+          <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
 
-        {/* ✅ Toast container added here (global) */}
         <ToastContainer
           position="top-right"
           autoClose={3000}
