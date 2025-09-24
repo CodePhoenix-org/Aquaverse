@@ -34,22 +34,20 @@ const ArgoGlobe = () => {
     controls.autoRotateSpeed = 0.18;
     controls.enablePan = false;
 
-    // Lights
-    scene.add(new THREE.AmbientLight(0x66ccff, 0.6));
-    const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    // Lights (brighter)
+    scene.add(new THREE.AmbientLight(0x8888ff, 1.0));
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1.8);
     sunLight.position.set(5, 3, 5);
     scene.add(sunLight);
 
-    // Earth
+    // Earth (glossy + bright)
     const textureLoader = new THREE.TextureLoader();
-    const earthMaterial = new THREE.MeshStandardMaterial({
+    const earthMaterial = new THREE.MeshPhongMaterial({
       map: textureLoader.load(
         "https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg"
       ),
-      metalness: 0.4,
-      roughness: 0.6,
-      emissive: new THREE.Color(0x111111),
-      emissiveIntensity: 0.3,
+      specular: new THREE.Color("white"),
+      shininess: 40,
     });
     const earth = new THREE.Mesh(
       new THREE.SphereGeometry(1, 128, 128),
@@ -57,6 +55,7 @@ const ArgoGlobe = () => {
     );
     scene.add(earth);
 
+    // Clouds
     const clouds = new THREE.Mesh(
       new THREE.SphereGeometry(1.01, 128, 128),
       new THREE.MeshPhongMaterial({
@@ -70,15 +69,15 @@ const ArgoGlobe = () => {
     );
     scene.add(clouds);
 
-    // Data Points as neon particles
+    // Data Points group
     const dataPointsGroup = new THREE.Group();
     scene.add(dataPointsGroup);
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
-    let intersected;
 
     camera.position.z = 2.5;
 
+    // FETCH FLOAT DATA
     fetch("/api/argo")
       .then((res) => res.json())
       .then((argoData) => {
@@ -92,8 +91,7 @@ const ArgoGlobe = () => {
         const colors = [];
         const sizes = [];
         const color = new THREE.Color();
-
-        // Inside the fetch("/api/argo") .then() block, after positions/colors/sizes:
+        const floatMeta = []; // store metadata
 
         argoData.forEach((point) => {
           const lat = point.latitude;
@@ -105,30 +103,17 @@ const ArgoGlobe = () => {
           const y = Math.cos(phi);
           const z = Math.sin(phi) * Math.sin(theta);
 
-          // 1️⃣ Add pulsating point
           positions.push(x, y, z);
           const hue = Math.random() * 50; // yellow-red neon
           color.setHSL(hue / 360, 1, 0.5);
           colors.push(color.r, color.g, color.b);
           sizes.push(Math.random() * 6 + 4);
 
-          // 2️⃣ Add vertical line (spike) above the globe
-          const lineHeight = 0.2 + Math.random() * 0.15; // adjustable spike height
-          const lineGeometry = new THREE.BufferGeometry().setFromPoints([
-            new THREE.Vector3(x, y, z),
-            new THREE.Vector3(
-              x * (1 + lineHeight),
-              y * (1 + lineHeight),
-              z * (1 + lineHeight)
-            ),
-          ]);
-          const lineMaterial = new THREE.LineBasicMaterial({
-            color: new THREE.Color().setHSL(hue / 360, 1, 0.5),
-            transparent: true,
-            opacity: 0.9,
+          // save metadata
+          floatMeta.push({
+            ...point,
+            pos: new THREE.Vector3(x, y, z),
           });
-          const line = new THREE.Line(lineGeometry, lineMaterial);
-          dataPointsGroup.add(line);
         });
 
         const geometry = new THREE.BufferGeometry();
@@ -144,6 +129,9 @@ const ArgoGlobe = () => {
           "size",
           new THREE.Float32BufferAttribute(sizes, 1)
         );
+
+        // attach metadata to geometry
+        geometry.userData.floatMeta = floatMeta;
 
         const material = new THREE.ShaderMaterial({
           uniforms: {
@@ -177,9 +165,42 @@ const ArgoGlobe = () => {
 
         const points = new THREE.Points(geometry, material);
         dataPointsGroup.add(points);
+
+        // mouse hover tooltip
+        const onMouseMove = (event) => {
+          mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+          mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+          raycaster.setFromCamera(mouse, camera);
+
+          const intersects = raycaster.intersectObject(points);
+          if (intersects.length > 0) {
+            const index = intersects[0].index;
+            const meta = geometry.userData.floatMeta[index];
+            if (meta) {
+              tooltipRef.current.style.display = "block";
+              tooltipRef.current.style.left = event.clientX + 15 + "px";
+              tooltipRef.current.style.top = event.clientY + 15 + "px";
+              tooltipRef.current.innerHTML = `
+                <b>${meta.profiler}</b><br/>
+                📍 Lat: ${meta.latitude.toFixed(2)}, Lon: ${meta.longitude.toFixed(2)}<br/>
+                🗓️ ${meta.date_str}
+              `;
+            }
+          } else {
+            tooltipRef.current.style.display = "none";
+          }
+        };
+        window.addEventListener("mousemove", onMouseMove);
+
+        // cleanup
+        return () => {
+          window.removeEventListener("mousemove", onMouseMove);
+        };
       })
       .catch((err) => console.error("Failed to fetch Argo data:", err));
 
+    // animate
     const animate = (time) => {
       requestAnimationFrame(animate);
       controls.update();
@@ -187,7 +208,7 @@ const ArgoGlobe = () => {
       earth.rotation.y += 0.0003;
 
       dataPointsGroup.children.forEach((child) => {
-        if (child.material.uniforms) {
+        if (child.material && child.material.uniforms) {
           child.material.uniforms.time.value = time * 0.0015;
         }
       });
