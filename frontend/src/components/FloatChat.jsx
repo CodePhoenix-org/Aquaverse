@@ -714,30 +714,35 @@ const FloatChat = () => {
         setMessages((prev) => [...prev, finalBotMessage]);
 
         // Save to chat history if authenticated
-        const token = getAuthToken();
-        if (token) {
-          try {
-            const historyRes = await axiosInstance.post("/chat/history", {
-              query,
-              response: backendMsg,
-              viz_type: vizData?.type,
-            });
-            const newHistoryItem = {
-              id: historyRes.data.id,
-              title: query.substring(0, 50) + (query.length > 50 ? "..." : "") || "Untitled Query",
-              snippet: backendMsg.substring(0, 100) + (backendMsg.length > 100 ? "..." : "") || "No preview available",
-              date: new Date().toLocaleDateString(),
-              starred: false,
-              viz_type: vizData?.type,
-            };
-            setChatHistory((prev) => [newHistoryItem, ...prev]);
-          } catch (historyErr) {
-            console.error("Failed to save chat history:", historyErr);
-            toast.error("Failed to save chat history.");
-          }
-        } else {
-          console.warn("⚠️ Skipping chat history save: No authentication token found.");
-        }
+   // Update the chat history save section in your React component
+// Replace the existing save logic with this:
+
+// Save to chat history if authenticated
+const token = getAuthToken();
+if (token) {
+  try {
+    const historyRes = await axiosInstance.post("/chat/history", {
+      sender: "user", // or "bot" depending on your logic
+      content: `Q: ${query}\nA: ${backendMsg}`, // Combined content format
+      viz_data: vizData || null,
+      viz_tab: vizTab || null,
+    });
+    const newHistoryItem = {
+      id: historyRes.data.id,
+      title: query.substring(0, 50) + (query.length > 50 ? "..." : "") || "Untitled Query",
+      snippet: backendMsg.substring(0, 100) + (backendMsg.length > 100 ? "..." : "") || "No preview available",
+      date: new Date().toLocaleDateString(),
+      starred: false,
+      viz_type: vizData?.type,
+    };
+    setChatHistory((prev) => [newHistoryItem, ...prev]);
+  } catch (historyErr) {
+    console.error("Failed to save chat history:", historyErr);
+    toast.error("Failed to save chat history.");
+  }
+} else {
+  console.warn("⚠️ Skipping chat history save: No authentication token found.");
+}
       } catch (err) {
         console.error("Backend error:", err);
         setMessages((prev) => [

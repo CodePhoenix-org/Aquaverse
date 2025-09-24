@@ -16,7 +16,7 @@ def get_chat_history(
 ):
     return db.query(ChatMessageModel)\
         .filter(ChatMessageModel.user_id == current_user.id)\
-        .order_by(ChatMessageModel.timestamp.asc())\
+        .order_by(ChatMessageModel.timestamp.desc())\
         .all()
 
 @router.post("/history", response_model=ChatMessage)
@@ -25,12 +25,26 @@ def post_chat_message(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Handle both old and new formats
+    if chat.query and chat.response:
+        # Old format from frontend
+        content = f"Q: {chat.query}\nA: {chat.response}"
+        sender = "user"  # Default sender
+        viz_data = None
+        viz_tab = chat.viz_type
+    else:
+        # New format
+        content = chat.content or ""
+        sender = chat.sender or "user"
+        viz_data = chat.viz_data
+        viz_tab = chat.viz_tab
+    
     new_msg = ChatMessageModel(
         user_id=current_user.id,
-        sender=chat.sender,
-        content=chat.content,
-        viz_data=chat.viz_data,
-        viz_tab=chat.viz_tab
+        sender=sender,
+        content=content,
+        viz_data=viz_data,
+        viz_tab=viz_tab
     )
     db.add(new_msg)
     db.commit()
