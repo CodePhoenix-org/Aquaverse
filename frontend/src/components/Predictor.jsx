@@ -107,6 +107,90 @@ const renderRiskCard = (data, risk, themeClasses, error) => {
   );
 };
 
+// Render survival card (mock)
+const renderSurvivalCard = (data, survival, themeClasses, error) => {
+  console.log('renderSurvivalCard called with:', { data, survival, error });
+  let bgClass = `${themeClasses.cardBg}`;
+  let borderClass = themeClasses.border;
+  let badgeBg = 'bg-gray-500';
+  if (survival) {
+    const level = survival.level.split(' ')[0];
+    if (level === 'High') {
+      bgClass = 'bg-green-500/10 border-green-500/20';
+      badgeBg = 'bg-green-500 text-white';
+    } else if (level === 'Medium') {
+      bgClass = 'bg-yellow-500/10 border-yellow-500/20';
+      badgeBg = 'bg-yellow-500 text-white';
+    } else {
+      bgClass = 'bg-red-500/10 border-red-500/20';
+      badgeBg = 'bg-red-500 text-white';
+    }
+  }
+  return (
+    <div className={`p-4 sm:p-6 rounded-2xl ${borderClass} border ${bgClass}`}>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
+        <h2 className={`text-xl sm:text-2xl font-bold ${themeClasses.text}`}>Aquatic Life Survival Assessment</h2>
+        {survival && (
+          <div className={`px-3 py-1 rounded-full text-sm font-semibold w-fit ${badgeBg}`}>
+            {survival.level}
+          </div>
+        )}
+      </div>
+      {error ? (
+        <div className="flex items-center justify-center p-4 bg-red-500/10 rounded-lg">
+          <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
+          <p className={`${themeClasses.textMuted} text-sm`}>{error}</p>
+        </div>
+      ) : data && survival ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+            <div className="text-center p-3 rounded-lg bg-white/10 col-span-2 md:col-span-1">
+              <div className="text-xl sm:text-2xl font-bold text-blue-400">{survival.probability}%</div>
+              <div className={`${themeClasses.textMuted} text-xs sm:text-sm`}>Estimated Survival Rate</div>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-white/10">
+              <ThermometerSun className="w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-2 text-orange-400" />
+              <div className={`${themeClasses.text} font-medium text-sm`}>Temperature: {data.temperature.toFixed(1)}°C</div>
+              <div className={`${themeClasses.textMuted} text-xs`}>Ocean temperature</div>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-white/10">
+              <Zap className="w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-2 text-purple-400" />
+              <div className={`${themeClasses.text} font-medium text-sm`}>Oxygen: {data.oxygen.toFixed(1)} µmol/kg</div>
+              <div className={`${themeClasses.textMuted} text-xs`}>Dissolved oxygen</div>
+            </div>
+            <div className="text-center p-3 rounded-lg bg-white/10">
+              <Leaf className="w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-2 text-green-400" />
+              <div className={`${themeClasses.text} font-medium text-sm`}>Chl-a: {data.chlorophyll.toFixed(2)} mg/m³</div>
+              <div className={`${themeClasses.textMuted} text-xs`}>Chlorophyll-a</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+            <div>
+              <h3 className={`font-semibold mb-2 flex items-center ${themeClasses.text} text-sm sm:text-base`}>
+                <MapPin className="w-4 h-4 sm:w-5 sm:h-5 mr-2 flex-shrink-0" /> Location
+              </h3>
+              <div className={`${themeClasses.textMuted} text-sm`}>Lat: {data.latitude.toFixed(1)}°N, Lon: {data.longitude.toFixed(1)}°E</div>
+            </div>
+            <div>
+              <h3 className={`font-semibold mb-2 flex items-center ${themeClasses.text} text-sm sm:text-base`}>
+                <Droplets className="w-4 h-4 sm:w-5 sm:h-5 mr-2 flex-shrink-0" /> Other Metrics
+              </h3>
+              <div className={`${themeClasses.textMuted} text-sm`}>Salinity: {data.salinity.toFixed(1)} PSU, Depth: {data.depth.toFixed(0)} m</div>
+            </div>
+          </div>
+          <div className="mt-6 p-3 sm:p-4 rounded-lg bg-white/5">
+            <p className={`${themeClasses.textSecondary} text-xs sm:text-sm leading-relaxed`}>
+              This is a mock assessment for aquatic life survival based on temperature, dissolved oxygen, and chlorophyll levels (as a proxy for food availability). High survival indicates optimal environmental conditions for marine organisms.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <p className={`${themeClasses.textMuted} text-center py-8 text-sm sm:text-base`}>Enter ocean data to assess survival rate.</p>
+      )}
+    </div>
+  );
+};
+
 const Predictor = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -122,6 +206,7 @@ const Predictor = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [data, setData] = useState(null);
   const [risk, setRisk] = useState(null);
+  const [survival, setSurvival] = useState(null);
   const [error, setError] = useState(null);
   const [darkMode, setDarkMode] = useState(() => {
     try {
@@ -159,6 +244,7 @@ const Predictor = () => {
     setError(null);
     setData(null);
     setRisk(null);
+    setSurvival(null);
     const payload = {
       latitude: parseFloat(lat),
       longitude: parseFloat(lon),
@@ -186,6 +272,35 @@ const Predictor = () => {
         level: result.disaster_prediction === 'Anomaly' ? 'High' : 'Low',
         probability: Math.round(result.prediction_confidence * 100),
       });
+
+      // Mock survival rate calculation
+      const temp = parseFloat(temperature);
+      const oxy = parseFloat(oxygen);
+      const chl = parseFloat(chlorophyll);
+      let surv = 100;
+
+      // Penalize temperature outside 20-25°C
+      if (temp < 20 || temp > 25) {
+        surv -= Math.abs(temp - 22.5) * 2;
+      }
+
+      // Penalize low oxygen
+      if (oxy < 50) {
+        surv -= (50 - oxy) * 2;
+      } else if (oxy < 100) {
+        surv -= (100 - oxy) * 0.5;
+      }
+
+      // Penalize chlorophyll outside 0.5-1.0 mg/m³
+      if (chl < 0.5) {
+        surv -= (0.5 - chl) * 100;
+      } else if (chl > 1.0) {
+        surv -= (chl - 1.0) * 50;
+      }
+
+      surv = Math.max(0, Math.min(100, Math.round(surv)));
+      const survLevel = surv > 70 ? 'High Survival' : surv > 40 ? 'Medium Survival' : 'Low Survival';
+      setSurvival({ level: survLevel, probability: surv });
     } catch (err) {
       console.error('Prediction error:', err);
       setError(err.message || 'Failed to fetch prediction');
@@ -402,6 +517,7 @@ const Predictor = () => {
 
             {/* Results */}
             {renderRiskCard(data, risk, themeClasses, error)}
+            {renderSurvivalCard(data, survival, themeClasses, error)}
 
             {/* Info Panel */}
             <div className={`${themeClasses.cardBg} p-4 sm:p-6 rounded-2xl ${themeClasses.border} border shadow-lg`}>
