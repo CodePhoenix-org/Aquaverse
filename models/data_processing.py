@@ -1,5 +1,5 @@
 # data_processing.py
-from disaster_prediction import predict_disaster
+from models.disaster_prediction import predict_disaster
 
 def process_float_record(record: dict):
     """
