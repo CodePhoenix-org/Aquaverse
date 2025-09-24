@@ -18,8 +18,7 @@ import "./i18n";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { useEffect } from "react";
-import CyberGlobe from "./components/maps/CycleGlobe";
-
+import ArgoGlobe from "./components/maps/ArgoGlobe";
 function App() {
   console.log("App.jsx loaded"); // Debugging to confirm file is loaded
   return (
@@ -31,7 +30,7 @@ function App() {
           <Route path="/home" element={<Home />} />
           <Route path="/predict" element={<Predictor />} />
           <Route path="/floatchat" element={<FloatChat />} />
-          <Route path="/threejs" element={<CyberGlobe />} />
+          <Route path="/visuals" element={<ArgoGlobe />} />
           <Route path="/" element={<Navigate to="/home" replace />} />
 
           {/* Protected routes */}

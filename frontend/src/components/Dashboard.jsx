@@ -5,6 +5,7 @@ import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
 import ChatInterface from "./chat/ChatInterface";
 import FloatMap from "./maps/FloatMap";
+import ArgoGlobe from "./maps/ArgoGlobe";
 import DataPlots from "./plots/DataPlots";
 import ProfileComparison from "./plots/ProfileComparison";
 import DataTable from "./dashboard/DataTable";

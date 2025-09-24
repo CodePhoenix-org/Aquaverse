@@ -1,14 +1,15 @@
-import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { toast } from 'react-toastify';
-import { 
-  MessageCircle, 
-  Mic, 
-  MicOff, 
-  Send, 
-  History, 
-  BarChart3, 
-  Settings, 
+import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "react-toastify";
+import axios from "axios";
+import {
+  MessageCircle,
+  Mic,
+  MicOff,
+  Send,
+  History,
+  BarChart3,
+  Settings,
   Upload,
   Search,
   Globe,
@@ -30,14 +31,14 @@ import {
   Sun,
   Paperclip,
   Info,
-  Download
-} from 'lucide-react';
+  Download,
+} from "lucide-react";
 
 // Inject custom scrollbar and animation styles globally (only once)
-if (typeof window !== 'undefined') {
-  const styleId = 'floatchat-styles';
+if (typeof window !== "undefined") {
+  const styleId = "floatchat-styles";
   if (!document.getElementById(styleId)) {
-    const style = document.createElement('style');
+    const style = document.createElement("style");
     style.id = styleId;
     style.innerHTML = `
       .custom-scrollbar::-webkit-scrollbar {
@@ -86,32 +87,96 @@ if (typeof window !== 'undefined') {
   }
 }
 
+// Utility function to get JWT token from localStorage
+const getAuthToken = () => {
+  if (typeof window === "undefined") return null;
+  try {
+    const user = localStorage.getItem("user");
+    if (user) {
+      const parsed = JSON.parse(user);
+      return parsed.access_token || null;
+    }
+    return null;
+  } catch (error) {
+    console.error("Error retrieving auth token from localStorage:", error);
+    return null;
+  }
+};
+
+// Create Axios instance with authentication interceptors
+const createAuthenticatedAxiosInstance = () => {
+  const instance = axios.create({
+    baseURL: "http://127.0.0.1:8000",
+    timeout: 30000,
+  });
+
+  // Request interceptor to add Authorization header
+  instance.interceptors.request.use(
+    (config) => {
+      const token = getAuthToken();
+      if (token && config.url?.includes("/chat/")) {
+        config.headers.Authorization = `Bearer ${token}`;
+        // console.log("Request headers:", config.headers); // Debug line (remove in production)
+      } else if (config.url?.includes("/chat/")) {
+        console.warn(
+          `⚠️ No authentication token found for protected endpoint: ${config.url}. User may need to log in.`
+        );
+      }
+      return config;
+    },
+    (error) => Promise.reject(error)
+  );
+
+  // Response interceptor to handle 401 errors
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (error.response?.status === 401) {
+        console.warn(
+          `🔐 401 Unauthorized error for ${error.config?.url}. Token may be invalid or expired.`
+        );
+        localStorage.removeItem("user");
+        toast.warning("Session expired. Please log in again to continue.");
+        // Optionally redirect to login: navigate("/login");
+      }
+      return Promise.reject(error);
+    }
+  );
+
+  return instance;
+};
+
+// Create authenticated Axios instance
+const axiosInstance = createAuthenticatedAxiosInstance();
+
 // Enhanced Speech Recognition Detection
 const detectSpeechRecognition = () => {
-  if (typeof window === 'undefined') return false;
-  
-  const isSecureContext = window.isSecureContext || 
-    (window.location.protocol === 'https:' || window.location.hostname === 'localhost');
-  
+  if (typeof window === "undefined") return false;
+
+  const isSecureContext =
+    window.isSecureContext ||
+    window.location.protocol === "https:" ||
+    window.location.hostname === "localhost";
+
   if (!isSecureContext) {
-    console.warn('SpeechRecognition requires HTTPS or localhost');
-    return { supported: false, reason: 'insecure-context' };
+    console.warn("SpeechRecognition requires HTTPS or localhost");
+    return { supported: false, reason: "insecure-context" };
   }
 
-  const SpeechRecognition = 
-    window.SpeechRecognition || 
-    window.webkitSpeechRecognition || 
-    window.mozSpeechRecognition || 
+  const SpeechRecognition =
+    window.SpeechRecognition ||
+    window.webkitSpeechRecognition ||
+    window.mozSpeechRecognition ||
     window.msSpeechRecognition;
 
   const supported = !!SpeechRecognition;
-  
+
   if (!supported) {
-    console.warn('SpeechRecognition API not supported in this browser');
-    return { supported: false, reason: 'not-supported' };
+    console.warn("SpeechRecognition API not supported in this browser");
+    return { supported: false, reason: "not-supported" };
   }
 
-  return { supported: true, reason: 'supported' };
+  return { supported: true, reason: "supported" };
 };
 
 // Speech Recognition Utility
@@ -128,7 +193,9 @@ class VoiceInput {
 
   startListening() {
     if (!this.isSupported) {
-      this.onError(`Speech recognition not available: ${this.detection.reason}`);
+      this.onError(
+        `Speech recognition not available: ${this.detection.reason}`
+      );
       return;
     }
 
@@ -137,27 +204,30 @@ class VoiceInput {
     }
 
     try {
-      this.recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+      this.recognition = new (window.SpeechRecognition ||
+        window.webkitSpeechRecognition)();
       this.recognition.continuous = false;
       this.recognition.interimResults = true;
-  this.recognition.lang = 'hi-IN'; // Prioritize Hindi
+      this.recognition.lang = "en-US";
       this.recognition.maxAlternatives = 1;
 
       if (window.SpeechGrammarList) {
-        const grammar = '#JSGF V1.0; grammar ocean; public <query> = show me | display | analyze | compare | find | what are | temperature | salinity | pressure | float | argo | profile | map | trend | anomaly;';
-        const speechRecognitionList = new (window.SpeechGrammarList || window.webkitSpeechGrammarList)();
+        const grammar =
+          "#JSGF V1.0; grammar ocean; public <query> = show me | display | analyze | compare | find | what are | temperature | salinity | pressure | float | argo | profile | map | trend | anomaly;";
+        const speechRecognitionList = new (window.SpeechGrammarList ||
+          window.webkitSpeechGrammarList)();
         speechRecognitionList.addFromString(grammar, 1);
         this.recognition.grammars = speechRecognitionList;
       }
 
       this.recognition.onstart = () => {
         this.isListening = true;
-        console.log('Voice recognition started');
+        console.log("Voice recognition started");
       };
 
       this.recognition.onresult = (event) => {
-        let interimTranscript = '';
-        let finalTranscript = '';
+        let interimTranscript = "";
+        let finalTranscript = "";
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript = event.results[i][0].transcript;
           if (event.results[i].isFinal) {
@@ -174,46 +244,43 @@ class VoiceInput {
 
       this.recognition.onerror = (event) => {
         this.isListening = false;
-        let errorMessage = 'Speech recognition error';
-        
+        let errorMessage = "Speech recognition error";
         switch (event.error) {
-          case 'no-speech':
-            errorMessage = 'No speech detected. Try speaking louder.';
+          case "no-speech":
+            errorMessage = "No speech detected. Try speaking louder.";
             break;
-          case 'audio-capture':
-            errorMessage = 'Microphone access denied. Please allow microphone access.';
+          case "audio-capture":
+            errorMessage = "Microphone access denied. Please allow microphone access.";
             break;
-          case 'not-allowed':
-            errorMessage = 'Microphone permission denied. Please enable microphone access.';
+          case "not-allowed":
+            errorMessage = "Microphone permission denied. Please enable microphone access.";
             break;
-          case 'network':
-            errorMessage = 'Network error. Please check your internet connection.';
+          case "network":
+            errorMessage = "Network error. Please check your internet connection.";
             break;
-          case 'service-not-allowed':
-            errorMessage = 'Speech service not available. Please check your browser settings.';
+          case "service-not-allowed":
+            errorMessage = "Speech service not available. Please check your browser settings.";
             break;
-          case 'aborted':
-            errorMessage = 'Speech recognition was aborted.';
+          case "aborted":
+            errorMessage = "Speech recognition was aborted.";
             break;
           default:
             errorMessage = `Speech recognition error: ${event.error}`;
         }
-        
-        console.error('Speech recognition error:', event.error);
+        console.error("Speech recognition error:", event.error);
         this.onError(errorMessage);
       };
 
       this.recognition.onend = () => {
         this.isListening = false;
-        console.log('Voice recognition ended');
+        console.log("Voice recognition ended");
         this.onEnd();
       };
 
       this.recognition.start();
-      
     } catch (error) {
-      console.error('Failed to initialize speech recognition:', error);
-      this.onError('Failed to initialize speech recognition: ' + error.message);
+      console.error("Failed to initialize speech recognition:", error);
+      this.onError("Failed to initialize speech recognition: " + error.message);
     }
   }
 
@@ -234,84 +301,163 @@ class VoiceInput {
 function handleFileChange(event, setFileStatus, setMessages) {
   const file = event.target.files?.[0];
   if (!file) {
-    setFileStatus({ status: 'error', message: 'No file selected.' });
-    toast.error('No file selected.');
+    setFileStatus({ status: "error", message: "No file selected." });
+    toast.error("No file selected.");
     return;
   }
 
-  const validExtensions = ['.nc', '.csv', '.txt', '.json'];
-  const fileExtension = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+  const validExtensions = [".nc", ".csv", ".txt", ".json"];
+  const fileExtension = file.name
+    .slice(file.name.lastIndexOf("."))
+    .toLowerCase();
   if (!validExtensions.includes(fileExtension)) {
     setFileStatus({
-      status: 'error',
-      message: `Invalid file type. Please upload a ${validExtensions.join(', ')} file.`,
+      status: "error",
+      message: `Invalid file type. Please upload a ${validExtensions.join(", ")} file.`,
     });
-    toast.error(`Invalid file type. Please upload a ${validExtensions.join(', ')} file.`);
+    toast.error(`Invalid file type. Please upload a ${validExtensions.join(", ")} file.`);
     return;
   }
 
-  setFileStatus({ status: 'uploading', message: 'Uploading and converting file...' });
+  setFileStatus({
+    status: "uploading",
+    message: "Uploading and converting file...",
+  });
 
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append("file", file);
 
-  import('axios').then(({ default: axios }) => {
-    axios
-      .post('http://127.0.0.1:8000/convert', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      })
-      .then((res) => {
-        const { convertedData, filename } = res.data;
-        setFileStatus({ status: 'success', message: 'File converted successfully!' });
-        toast.success('File converted successfully!');
-
-        const botMessage = {
-          id: Date.now(),
-          type: 'bot',
-          content: `📁 File "${file.name}" uploaded and converted successfully. Download your CSV below.`,
-          timestamp: new Date(),
-          filename,
-        };
-        setMessages((prev) => [...prev, botMessage]);
-      })
-      .catch((err) => {
-        console.error('File conversion error:', err);
-        setFileStatus({
-          status: 'error',
-          message: '⚠️ Error converting file. Please try again.',
-        });
-        toast.error('Error converting file. Please try again.');
-        const errorMessage = {
-          id: Date.now(),
-          type: 'bot',
-          content: '⚠️ Sorry, there was an error processing your file. Please check the file and try again.',
-          timestamp: new Date(),
-        };
-        setMessages((prev) => [...prev, errorMessage]);
+  axiosInstance
+    .post("/convert", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    })
+    .then((res) => {
+      const { convertedData, filename } = res.data;
+      setFileStatus({
+        status: "success",
+        message: "File converted successfully!",
       });
-  });
+      toast.success("File converted successfully!");
+
+      const botMessage = {
+        id: Date.now(),
+        type: "bot",
+        content: `📁 File "${file.name}" uploaded and converted successfully. Download your CSV below.`,
+        timestamp: new Date(),
+        filename,
+      };
+      setMessages((prev) => [...prev, botMessage]);
+    })
+    .catch((err) => {
+      console.error("File conversion error:", err);
+      setFileStatus({
+        status: "error",
+        message: "⚠️ Error converting file. Please try again.",
+      });
+      toast.error("Error converting file. Please try again.");
+      const errorMessage = {
+        id: Date.now(),
+        type: "bot",
+        content: "⚠️ Sorry, there was an error processing your file. Please check the file and try again.",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    });
 }
 
 const FloatChat = () => {
   const navigate = useNavigate();
-  
+
   const getInitialState = (key, fallback) => {
     try {
       const stored = localStorage.getItem(key);
-      if (stored) return JSON.parse(stored);
-    } catch {}
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (key === "floatchat_messages" && Array.isArray(parsed)) {
+          return parsed.map((msg) => ({
+            ...msg,
+            timestamp: new Date(msg.timestamp),
+          }));
+        }
+        return parsed;
+      }
+    } catch (err) {
+      console.error(`Error parsing ${key} from localStorage:`, err);
+    }
     return fallback;
   };
 
-  const [messages, setMessages] = useState(() => getInitialState('floatchat_messages', []));
-  const [lastVizData, setLastVizData] = useState(() => getInitialState('floatchat_lastVizData', null));
-  const [lastVizTab, setLastVizTab] = useState(() => getInitialState('floatchat_lastVizTab', null));
-  const [inputText, setInputText] = useState(() => getInitialState('floatchat_inputText', ''));
+  const [messages, setMessages] = useState(() =>
+    getInitialState("floatchat_messages", [])
+  );
+  const [lastVizData, setLastVizData] = useState(() =>
+    getInitialState("floatchat_lastVizData", null)
+  );
+  const [lastVizTab, setLastVizTab] = useState(() =>
+    getInitialState("floatchat_lastVizTab", null)
+  );
+  const [inputText, setInputText] = useState(() =>
+    getInitialState("floatchat_inputText", "")
+  );
   const [voiceError, setVoiceError] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("idle");
+  const [voiceEnabled, setVoiceEnabled] = useState(() => {
+    return getInitialState("floatchat_voiceEnabled", false);
+  });
+  const [fileStatus, setFileStatus] = useState({ status: "idle", message: "" });
+  const [voiceSupport, setVoiceSupport] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [darkMode, setDarkMode] = useState(true);
+  const [chatHistory, setChatHistory] = useState([]);
 
-  // Multilingual translation for voice input
+  const voiceInputRef = useRef(null);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  const isAuthenticated = () => !!getAuthToken();
+
+  const fetchHistory = async () => {
+    const token = getAuthToken();
+    if (!token) {
+      console.warn("⚠️ Skipping chat history fetch: No authentication token found.");
+      toast.info("Log in to access your chat history.");
+      setChatHistory([]);
+      return;
+    }
+
+    try {
+      const res = await axiosInstance.get("/chat/history");
+      const transformedHistory = (res.data || []).map((item) => {
+        const content = item.content || "";
+        const parts = content.split("\nA: ");
+        const query = parts[0]?.replace("Q: ", "") || "";
+        const response = parts[1] || "";
+        return {
+          id: item.id,
+          title: query.substring(0, 50) + (query.length > 50 ? "..." : "") || "Untitled Query",
+          snippet: response.substring(0, 100) + (response.length > 100 ? "..." : "") || "No preview available",
+          date: new Date(item.timestamp).toLocaleDateString(),
+          starred: false,
+          viz_type: item.viz_tab,
+        };
+      });
+      setChatHistory(transformedHistory);
+    } catch (err) {
+      console.error("Failed to fetch chat history:", err);
+      toast.error("Failed to fetch chat history.");
+    }
+  };
+
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
   const translateText = async (text) => {
     if (!text) return;
     try {
@@ -319,51 +465,21 @@ const FloatChat = () => {
       const response = await fetch(url);
       const data = await response.json();
       const translatedText = data[0][0][0];
-      if (translatedText && translatedText.trim() !== '') {
+      if (translatedText && translatedText.trim() !== "") {
         setInputText(translatedText);
       } else {
-        setInputText(text); // Fallback to original text
+        setInputText(text);
       }
     } catch (error) {
-      console.error('Translation error:', error);
-      setInputText(text); // Fallback to original text
-    }
-  };
-  const [isRecording, setIsRecording] = useState(false);
-  const [isVoiceActive, setIsVoiceActive] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState('idle');
-  const [voiceEnabled, setVoiceEnabled] = useState(() => {
-    return getInitialState('floatchat_voiceEnabled', false);
-  });
-  
-  const [fileStatus, setFileStatus] = useState({ status: 'idle', message: '' });
-  const [voiceSupport, setVoiceSupport] = useState(null);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const [darkMode, setDarkMode] = useState(true);
-  const [chatHistory, setChatHistory] = useState([
-    { id: 1, title: "Ocean temperature analysis", snippet: "Show me temperature profiles...", date: "Today", starred: false },
-    { id: 2, title: "Salinity data Arabian Sea", snippet: "Compare salinity levels in...", date: "Yesterday", starred: true },
-    { id: 3, title: "ARGO float trajectories", snippet: "Display float paths for...", date: "2 days ago", starred: false },
-    { id: 4, title: "BGC parameter analysis", snippet: "Analyze bio-geo-chemical...", date: "1 week ago", starred: false }
-  ]);
-
-  const voiceInputRef = useRef(null);
-  const messagesEndRef = useRef(null);
-  const inputRef = useRef(null);
-  const fileInputRef = useRef(null);
-
-  const handleKeyPress = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      handleSendMessage();
+      console.error("Translation error:", error);
+      setInputText(text);
     }
   };
 
   useEffect(() => {
     const detection = detectSpeechRecognition();
     setVoiceSupport(detection);
-    console.log('Voice support detection:', detection);
+    console.log("Voice support detection:", detection);
   }, []);
 
   useEffect(() => {
@@ -376,19 +492,19 @@ const FloatChat = () => {
           translateText(transcript);
         }
         setTimeout(() => {
-          inputRef.current?.scrollIntoView({ behavior: 'smooth' });
+          inputRef.current?.scrollIntoView({ behavior: "smooth" });
         }, 0);
       },
       (error) => {
-        console.error('Voice recognition error:', error);
+        console.error("Voice recognition error:", error);
         setVoiceError(error);
-        setVoiceStatus('error');
-        setTimeout(() => setVoiceStatus('idle'), 3000);
+        setVoiceStatus("error");
+        setTimeout(() => setVoiceStatus("idle"), 3000);
         toast.error(error);
       },
       () => {
         setIsVoiceActive(false);
-        setVoiceStatus('idle');
+        setVoiceStatus("idle");
       }
     );
 
@@ -400,24 +516,24 @@ const FloatChat = () => {
   }, [voiceSupport]);
 
   useEffect(() => {
-    localStorage.setItem('floatchat_messages', JSON.stringify(messages));
+    localStorage.setItem("floatchat_messages", JSON.stringify(messages));
   }, [messages]);
 
   useEffect(() => {
-    localStorage.setItem('floatchat_lastVizData', JSON.stringify(lastVizData));
+    localStorage.setItem("floatchat_lastVizData", JSON.stringify(lastVizData));
   }, [lastVizData]);
 
   useEffect(() => {
-    localStorage.setItem('floatchat_lastVizTab', JSON.stringify(lastVizTab));
+    localStorage.setItem("floatchat_lastVizTab", JSON.stringify(lastVizTab));
   }, [lastVizTab]);
 
   useEffect(() => {
-    localStorage.setItem('floatchat_inputText', JSON.stringify(inputText));
+    localStorage.setItem("floatchat_inputText", JSON.stringify(inputText));
   }, [inputText]);
 
   useEffect(() => {
     if (voiceSupport?.supported) {
-      localStorage.setItem('floatchat_voiceEnabled', JSON.stringify(voiceEnabled));
+      localStorage.setItem("floatchat_voiceEnabled", JSON.stringify(voiceEnabled));
     }
   }, [voiceEnabled, voiceSupport]);
 
@@ -429,64 +545,71 @@ const FloatChat = () => {
 
   const toggleVoiceRecording = () => {
     if (!voiceSupport?.supported || !voiceInputRef.current?.isSupported) {
-      setVoiceStatus('error');
-      toast.error('Speech recognition not available.');
+      setVoiceStatus("error");
+      toast.error("Speech recognition not available.");
       return;
     }
 
     if (isVoiceActive) {
       voiceInputRef.current.stopListening();
       setIsVoiceActive(false);
-      setVoiceStatus('idle');
+      setVoiceStatus("idle");
       setIsRecording(false);
     } else {
       setIsVoiceActive(true);
-      setVoiceStatus('listening');
+      setVoiceStatus("listening");
       setIsRecording(true);
-      setInputText('');
-      
-      navigator.mediaDevices.getUserMedia({ audio: true })
+      setInputText("");
+
+      navigator.mediaDevices
+        .getUserMedia({ audio: true })
         .then(() => {
           voiceInputRef.current.startListening();
         })
         .catch((err) => {
-          console.error('Microphone access denied:', err);
-          setVoiceStatus('error');
+          console.error("Microphone access denied:", err);
+          setVoiceStatus("error");
           setIsVoiceActive(false);
           setIsRecording(false);
-          setTimeout(() => setVoiceStatus('idle'), 3000);
-          toast.error('Microphone access denied.');
+          setTimeout(() => setVoiceStatus("idle"), 3000);
+          toast.error("Microphone access denied.");
         });
     }
   };
 
   const enableVoiceInput = () => {
     if (!voiceSupport?.supported) {
-      setVoiceStatus('error');
-      toast.error('Speech recognition not supported.');
+      setVoiceStatus("error");
+      toast.error("Speech recognition not supported.");
       return;
     }
 
-    setVoiceStatus('requesting');
-    
-    navigator.mediaDevices.getUserMedia({ audio: true })
+    setVoiceStatus("requesting");
+
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
       .then(() => {
         setVoiceEnabled(true);
-        setVoiceStatus('idle');
-        toast.success('Voice input enabled!');
+        setVoiceStatus("idle");
+        toast.success("Voice input enabled!");
       })
       .catch((err) => {
-        console.error('Microphone permission denied:', err);
-        setVoiceStatus('error');
-        setTimeout(() => setVoiceStatus('idle'), 5000);
-        toast.error('Microphone permission denied.');
+        console.error("Microphone permission denied:", err);
+        setVoiceStatus("error");
+        setTimeout(() => setVoiceStatus("idle"), 5000);
+        toast.error("Microphone permission denied.");
       });
   };
 
   useEffect(() => {
-    if (inputText.trim() && !isVoiceActive && voiceStatus === 'idle' && isRecording) {
+    if (
+      inputText.trim() &&
+      !isVoiceActive &&
+      voiceStatus === "idle" &&
+      isRecording
+    ) {
       const timer = setTimeout(() => {
-        if (inputText.trim() && voiceStatus === 'idle') {
+        if (inputText.trim() && voiceStatus === "idle") {
           handleSendMessage();
         }
       }, 500);
@@ -500,157 +623,262 @@ const FloatChat = () => {
   };
 
   const handleDownload = (filename) => {
-    import('axios').then(({ default: axios }) => {
-      axios
-        .get(`http://127.0.0.1:8000/download/${filename}`, {
-          responseType: 'blob',
-        })
-        .then((response) => {
-          const url = window.URL.createObjectURL(new Blob([response.data]));
-          const link = document.createElement('a');
-          link.href = url;
-          link.setAttribute('download', filename);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
-          toast.success(`Downloaded ${filename}`);
-        })
-        .catch((err) => {
-          console.error('Download error:', err);
-          toast.error('Failed to download file. Please try again.');
-        });
-    });
+    axiosInstance
+      .get(`/download/${filename}`, {
+        responseType: "blob",
+      })
+      .then((response) => {
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement("a");
+        link.href = url;
+        link.setAttribute("download", filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        toast.success(`Downloaded ${filename}`);
+      })
+      .catch((err) => {
+        console.error("Download error:", err);
+        toast.error("Failed to download file. Please try again.");
+      });
   };
 
-  const handleSendMessage = () => {
-    if (inputText.trim() === '') return;
+  const handleKeyPress = (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      handleSendMessage();
+    }
+  };
+
+  const handleSendMessage = async () => {
+    const query = inputText.trim();
+    if (query === "") return;
 
     const userMessage = {
       id: Date.now(),
-      type: 'user',
-      content: inputText,
-      timestamp: new Date()
+      type: "user",
+      content: query,
+      timestamp: new Date(),
     };
 
-    setMessages(prev => [...prev, userMessage]);
-    setInputText('');
+    setMessages((prev) => [...prev, userMessage]);
+    setInputText("");
     setIsTyping(true);
     setIsRecording(false);
-    setVoiceStatus('idle');
+    setVoiceStatus("idle");
 
-    setTimeout(() => {
+    setTimeout(async () => {
       const cannedBotMessage = {
         id: Date.now() + 1,
-        type: 'bot',
-        content: `🔍 Processing your query: "${inputText.substring(0, 50)}${inputText.length > 50 ? '...' : ''}"\n\nI'll analyze this using our ARGO float database and generate the appropriate ocean data visualizations.`,
-        timestamp: new Date()
+        type: "bot",
+        content: `🔍 Processing your query: "${query.substring(0, 50)}${query.length > 50 ? "..." : ""}"\n\nI'll analyze this using our ARGO float database and generate the appropriate ocean data visualizations.`,
+        timestamp: new Date(),
       };
-      setMessages(prev => [...prev, cannedBotMessage]);
+      setMessages((prev) => [...prev, cannedBotMessage]);
 
-      import('axios').then(({ default: axios }) => {
-        axios.post('http://127.0.0.1:8000/chat/query', { query: inputText })
-          .then(res => {
-            let backendMsg = '';
-            let vizData = null;
-            let vizTab = null;
+      try {
+        const res = await axiosInstance.post("/chat/query", { query });
+        let backendMsg = "";
+        let vizData = null;
+        let vizTab = null;
 
-            if (Array.isArray(res.data)) {
-              backendMsg = res.data[0] || 'No response from backend.';
-              vizData = res.data[1] || null;
-            } else if (typeof res.data === 'object') {
-              backendMsg = res.data.message || res.data.answer || 'No response from backend.';
-              vizData = res.data.data || null;
-            } else {
-              backendMsg = String(res.data);
-            }
+        if (Array.isArray(res.data)) {
+          backendMsg = res.data[0] || "No response from backend.";
+          vizData = res.data[1] || null;
+        } else if (typeof res.data === "object") {
+          backendMsg = res.data.message || res.data.answer || "No response from backend.";
+          vizData = res.data.data || null;
+        } else {
+          backendMsg = String(res.data);
+        }
 
-            if (vizData && vizData.type) {
-              if (vizData.type.includes('profile')) vizTab = 'plots';
-              else if (vizData.type.includes('map')) vizTab = 'map';
-              else if (vizData.type.includes('comparison')) vizTab = 'comparison';
-              else if (vizData.type.includes('table')) vizTab = 'table';
-            }
+        if (vizData && vizData.type) {
+          if (vizData.type.includes("profile")) vizTab = "plots";
+          else if (vizData.type.includes("map")) vizTab = "map";
+          else if (vizData.type.includes("comparison")) vizTab = "comparison";
+          else if (vizData.type.includes("table")) vizTab = "table";
+        }
 
-            setLastVizData(vizData);
-            setLastVizTab(vizTab);
-            
-            const finalBotMessage = {
-              id: Date.now() + 2,
-              type: 'bot',
-              content: backendMsg,
-              timestamp: new Date(),
-              hasVisualization: !!vizData
-            };
+        setLastVizData(vizData);
+        setLastVizTab(vizTab);
 
-            setMessages(prev => [...prev, finalBotMessage]);
-          })
-          .catch(err => {
-            console.error('Backend error:', err);
-            setMessages(prev => [...prev, {
-              id: Date.now() + 2,
-              type: 'bot',
-              content: '⚠️ Sorry, I encountered an error while processing your request. Please try again or check your connection.',
-              timestamp: new Date()
-            }]);
-            toast.error('Error processing query.');
-          })
-          .finally(() => setIsTyping(false));
-      });
+        const finalBotMessage = {
+          id: Date.now() + 2,
+          type: "bot",
+          content: backendMsg,
+          timestamp: new Date(),
+          hasVisualization: !!vizData,
+        };
+
+        setMessages((prev) => [...prev, finalBotMessage]);
+
+        // Save to chat history if authenticated
+   // Update the chat history save section in your React component
+// Replace the existing save logic with this:
+
+// Save to chat history if authenticated
+const token = getAuthToken();
+if (token) {
+  try {
+    const historyRes = await axiosInstance.post("/chat/history", {
+      sender: "user", // or "bot" depending on your logic
+      content: `Q: ${query}\nA: ${backendMsg}`, // Combined content format
+      viz_data: vizData || null,
+      viz_tab: vizTab || null,
+    });
+    const newHistoryItem = {
+      id: historyRes.data.id,
+      title: query.substring(0, 50) + (query.length > 50 ? "..." : "") || "Untitled Query",
+      snippet: backendMsg.substring(0, 100) + (backendMsg.length > 100 ? "..." : "") || "No preview available",
+      date: new Date().toLocaleDateString(),
+      starred: false,
+      viz_type: vizData?.type,
+    };
+    setChatHistory((prev) => [newHistoryItem, ...prev]);
+  } catch (historyErr) {
+    console.error("Failed to save chat history:", historyErr);
+    toast.error("Failed to save chat history.");
+  }
+} else {
+  console.warn("⚠️ Skipping chat history save: No authentication token found.");
+}
+      } catch (err) {
+        console.error("Backend error:", err);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now() + 2,
+            type: "bot",
+            content: "⚠️ Sorry, I encountered an error while processing your request. Please try again or check your connection.",
+            timestamp: new Date(),
+          },
+        ]);
+        toast.error("Error processing query.");
+      } finally {
+        setIsTyping(false);
+      }
     }, 1000);
   };
+
+  const handleShare = async () => {
+    if (messages.length === 0) {
+      toast.error("No chat to share.");
+      return;
+    }
+
+    const chatData = {
+      messages: messages.map((m) => ({
+        type: m.type,
+        content: m.content,
+        timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
+        filename: m.filename,
+        hasVisualization: m.hasVisualization,
+      })),
+      lastVizData,
+      lastVizTab,
+    };
+    try {
+      const json = JSON.stringify(chatData);
+      const encoded = btoa(unescape(encodeURIComponent(json)));
+      const longUrl = `${window.location.origin}${window.location.pathname}?share=${encoded}`;
+      const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`);
+      const shortUrl = await response.text();
+
+      if (navigator.share) {
+        await navigator.share({
+          title: "FloatChat Conversation",
+          text: "Check out this ocean data chat!",
+          url: shortUrl,
+        });
+      } else {
+        await navigator.clipboard.writeText(shortUrl);
+        toast.success("Share link copied to clipboard!");
+      }
+    } catch (err) {
+      console.error("Share error:", err);
+      toast.error("Failed to generate share link.");
+    }
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const share = params.get("share");
+    if (share) {
+      try {
+        const json = decodeURIComponent(escape(atob(share)));
+        const data = JSON.parse(json);
+        setMessages(
+          data.messages.map((m) => ({
+            ...m,
+            timestamp: new Date(m.timestamp),
+          }))
+        );
+        setLastVizData(data.lastVizData);
+        setLastVizTab(data.lastVizTab);
+        toast.success("Shared chat loaded!");
+      } catch (err) {
+        console.error("Failed to load shared chat:", err);
+        toast.error("Invalid shared chat link.");
+      }
+    }
+  }, []);
 
   const samplePrompts = [
     {
       icon: <Globe className="w-8 h-8 animate-float" />,
       title: "Ocean Data Analysis",
-      description: "Show me salinity profiles near the equator in March 2023"
+      description: "Show me salinity profiles near the equator in March 2023",
     },
     {
       icon: <BarChart3 className="w-8 h-8 animate-float" />,
       title: "Compare Parameters",
-      description: "Compare BGC parameters in the Arabian Sea for the last 6 months"
+      description: "Compare BGC parameters in the Arabian Sea for the last 6 months",
     },
     {
       icon: <Search className="w-8 h-8 animate-float" />,
       title: "Find Floats",
-      description: "What are the nearest ARGO floats to coordinates 15°N, 68°E?"
+      description: "What are the nearest ARGO floats to coordinates 15°N, 68°E?",
     },
     {
       icon: <Waves className="w-8 h-8 animate-float" />,
       title: "Temperature Trends",
-      description: "Display temperature anomalies in the Indian Ocean basin"
-    }
+      description: "Display temperature anomalies in the Indian Ocean basin",
+    },
   ];
 
   const themeClasses = {
-    bg: darkMode ? 'bg-gray-900' : 'bg-white',
-    sidebarBg: darkMode ? 'bg-gray-800/95 backdrop-blur-md' : 'bg-gray-50/95 backdrop-blur-md',
-    cardBg: darkMode ? 'bg-gray-800/50' : 'bg-white/80',
-    cardHoverBg: darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-100/80',
-    promptBg: darkMode ? 'bg-gray-800/50' : 'bg-gray-50/80',
-    promptHoverBg: darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-100/80',
-    text: darkMode ? 'text-white' : 'text-gray-900',
-    textSecondary: darkMode ? 'text-gray-300' : 'text-gray-600',
-    textMuted: darkMode ? 'text-gray-400' : 'text-gray-500',
-    border: darkMode ? 'border-gray-700/50' : 'border-gray-200/50',
-    borderLight: darkMode ? 'border-gray-600/50' : 'border-gray-100/50',
-    inputBg: darkMode ? 'bg-gray-800/50 backdrop-blur-md' : 'bg-gray-50/80 backdrop-blur-md',
-    inputBorder: darkMode ? 'border-gray-600/50' : 'border-gray-200/50',
-    inputFocus: darkMode ? 'border-blue-400 ring-blue-400/30' : 'border-blue-300 ring-blue-300/30',
-    botMessageBg: darkMode ? 'bg-gray-800/50 backdrop-blur-md' : 'bg-gray-50/80 backdrop-blur-md',
-    hoverBg: darkMode ? 'hover:bg-gray-700/50' : 'hover:bg-gray-100/80',
-    buttonHoverBg: darkMode ? 'hover:bg-gray-600/50' : 'hover:bg-gray-100/80',
-    accent: 'bg-gradient-to-r from-blue-500 to-cyan-600',
-    accentHover: 'hover:from-blue-600 hover:to-cyan-700'
+    bg: darkMode ? "bg-gray-900" : "bg-white",
+    sidebarBg: darkMode ? "bg-gray-800/95 backdrop-blur-md" : "bg-gray-50/95 backdrop-blur-md",
+    cardBg: darkMode ? "bg-gray-800/50" : "bg-white/80",
+    cardHoverBg: darkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100/80",
+    promptBg: darkMode ? "bg-gray-800/50" : "bg-gray-50/80",
+    promptHoverBg: darkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100/80",
+    text: darkMode ? "text-white" : "text-gray-900",
+    textSecondary: darkMode ? "text-gray-300" : "text-gray-600",
+    textMuted: darkMode ? "text-gray-400" : "text-gray-500",
+    border: darkMode ? "border-gray-700/50" : "border-gray-200/50",
+    borderLight: darkMode ? "border-gray-600/50" : "border-gray-100/50",
+    inputBg: darkMode ? "bg-gray-800/50 backdrop-blur-md" : "bg-gray-50/80 backdrop-blur-md",
+    inputBorder: darkMode ? "border-gray-600/50" : "border-gray-200/50",
+    inputFocus: darkMode ? "border-blue-400 ring-blue-400/30" : "border-blue-300 ring-blue-300/30",
+    botMessageBg: darkMode ? "bg-gray-800/50 backdrop-blur-md" : "bg-gray-50/80 backdrop-blur-md",
+    hoverBg: darkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100/80",
+    buttonHoverBg: darkMode ? "hover:bg-gray-600/50" : "hover:bg-gray-100/80",
+    accent: "bg-gradient-to-r from-blue-500 to-cyan-600",
+    accentHover: "hover:from-blue-600 hover:to-cyan-700",
   };
 
   const getVoiceButtonClasses = () => {
-    if (voiceStatus === 'error') {
-      return 'bg-red-500/90 text-white animate-pulse-slow backdrop-blur-md shadow-lg';
+    if (voiceStatus === "error") {
+      return "bg-red-500/90 text-white animate-pulse-slow backdrop-blur-md shadow-lg";
     } else if (isVoiceActive) {
-      return 'bg-gradient-to-r from-blue-500 to-cyan-600 text-white animate-pulse-slow backdrop-blur-md shadow-lg';
-    } else if (!voiceEnabled && voiceStatus !== 'requesting' && voiceSupport?.supported) {
+      return "bg-gradient-to-r from-blue-500 to-cyan-600 text-white animate-pulse-slow backdrop-blur-md shadow-lg";
+    } else if (
+      !voiceEnabled &&
+      voiceStatus !== "requesting" &&
+      voiceSupport?.supported
+    ) {
       return `${themeClasses.textMuted} opacity-50 cursor-not-allowed`;
     } else {
       return `${themeClasses.textMuted} hover:text-blue-400 ${themeClasses.buttonHoverBg} backdrop-blur-md shadow-sm hover:shadow-md`;
@@ -658,7 +886,7 @@ const FloatChat = () => {
   };
 
   const getVoiceIcon = () => {
-    if (voiceStatus === 'error') {
+    if (voiceStatus === "error") {
       return <X className="w-6 h-6" />;
     } else if (isVoiceActive) {
       return <Mic className="w-6 h-6 animate-pulse" />;
@@ -670,22 +898,31 @@ const FloatChat = () => {
   };
 
   const isMicDisabled = () => {
-    return !voiceEnabled || !voiceSupport?.supported || !voiceInputRef.current?.isSupported || voiceStatus === 'requesting';
+    return (
+      !voiceEnabled ||
+      !voiceSupport?.supported ||
+      !voiceInputRef.current?.isSupported ||
+      voiceStatus === "requesting"
+    );
   };
 
   const getVoiceSupportMessage = () => {
     if (!voiceSupport) return null;
-    
+
     if (!voiceSupport.supported) {
-      if (voiceSupport.reason === 'insecure-context') {
+      if (voiceSupport.reason === "insecure-context") {
         return (
           <div className="bg-yellow-50/90 dark:bg-yellow-900/20 border border-yellow-200/50 dark:border-yellow-800/50 rounded-xl p-4 mt-4 backdrop-blur-md animate-slide-in shadow-lg">
             <div className="flex items-start space-x-3">
               <Info className="w-6 h-6 text-yellow-500 mt-1 flex-shrink-0 animate-pulse-slow" />
               <div className="text-base">
                 <p className={`${themeClasses.textSecondary} font-semibold`}>
-                  🔒 Voice input requires a secure connection (HTTPS). 
-                  For development, use <code className="bg-yellow-200/50 dark:bg-yellow-800/30 px-2 py-1 rounded text-sm font-mono">localhost</code> or deploy to HTTPS.
+                  🔒 Voice input requires a secure connection (HTTPS). For
+                  development, use{" "}
+                  <code className="bg-yellow-200/50 dark:bg-yellow-800/30 px-2 py-1 rounded text-sm font-mono">
+                    localhost
+                  </code>{" "}
+                  or deploy to HTTPS.
                 </p>
               </div>
             </div>
@@ -698,8 +935,9 @@ const FloatChat = () => {
               <Info className="w-6 h-6 text-blue-500 mt-1 flex-shrink-0 animate-pulse-slow" />
               <div className="text-base">
                 <p className={`${themeClasses.textSecondary} font-semibold`}>
-                  💬 Voice input works best in Chrome, Edge, and Safari. 
-                  Firefox has limited support. Use typing for seamless ocean data queries!
+                  💬 Voice input works best in Chrome, Edge, and Safari. Firefox
+                  has limited support. Use typing for seamless ocean data
+                  queries!
                 </p>
               </div>
             </div>
@@ -707,12 +945,14 @@ const FloatChat = () => {
         );
       }
     }
-    
+
     return null;
   };
 
   return (
-    <div className={`h-screen ${themeClasses.bg} flex relative transition-all duration-300 font-sans antialiased overflow-hidden`}>
+    <div
+      className={`h-screen ${themeClasses.bg} flex relative transition-all duration-300 font-sans antialiased overflow-hidden`}
+    >
       <input
         type="file"
         ref={fileInputRef}
@@ -724,7 +964,7 @@ const FloatChat = () => {
       <div
         className={`
           fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 ease-in-out
-          ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
           w-80 ${themeClasses.sidebarBg} ${themeClasses.border} border-r
           lg:translate-x-0 lg:static lg:z-auto
           overflow-hidden
@@ -733,20 +973,41 @@ const FloatChat = () => {
           shadow-2xl
         `}
       >
-        <div className={`flex items-center justify-between p-6 ${themeClasses.border} border-b`}>
+        <div
+          className={`flex items-center justify-between p-6 ${themeClasses.border} border-b`}
+        >
           <div className="flex items-center space-x-3">
-            <div className={`w-14 h-14 ${themeClasses.accent} rounded-xl flex items-center justify-center shadow-xl animate-float`}>
+            <div
+              className={`w-14 h-14 ${themeClasses.accent} rounded-xl flex items-center justify-center shadow-xl animate-float`}
+            >
               <Waves className="w-8 h-8 text-white" />
             </div>
             <div>
-              <h1 className={`text-2xl font-bold ${themeClasses.text} tracking-tight`}>FloatChat</h1>
-              <p className={`text-base ${themeClasses.textMuted} font-semibold`}>ARGO Data Discovery</p>
+              <h1
+                className={`text-2xl font-bold ${themeClasses.text} tracking-tight`}
+              >
+                FloatChat
+              </h1>
+              <p
+                className={`text-base ${themeClasses.textMuted} font-semibold flex items-center`}
+              >
+                ARGO Data Discovery
+                {isAuthenticated() ? (
+                  <span className="ml-2 px-2 py-1 bg-green-500/20 text-green-400 text-xs rounded-full flex ">
+                    User
+                  </span>
+                ) : (
+                  <span className="ml-2 px-2 py-1 bg-yellow-500/20 text-yellow-400 text-xs rounded-full">
+                    👤 Guest
+                  </span>
+                )}
+              </p>
             </div>
           </div>
           <button
             onClick={() => setSidebarOpen((open) => !open)}
             className={`p-3 ${themeClasses.hoverBg} rounded-xl transition-all duration-200 hover:scale-110 ${themeClasses.accentHover} shadow-md lg:hidden`}
-            aria-label={sidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+            aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
           >
             <X className={`w-6 h-6 ${themeClasses.text}`} />
           </button>
@@ -762,16 +1023,16 @@ const FloatChat = () => {
             `}
             onClick={() => {
               setMessages([]);
-              setInputText('');
+              setInputText("");
               setLastVizData(null);
               setLastVizTab(null);
               setIsVoiceActive(false);
-              setVoiceStatus('idle');
+              setVoiceStatus("idle");
               setIsRecording(false);
-              localStorage.removeItem('floatchat_messages');
-              localStorage.removeItem('floatchat_lastVizData');
-              localStorage.removeItem('floatchat_lastVizTab');
-              localStorage.removeItem('floatchat_inputText');
+              localStorage.removeItem("floatchat_messages");
+              localStorage.removeItem("floatchat_lastVizData");
+              localStorage.removeItem("floatchat_lastVizTab");
+              localStorage.removeItem("floatchat_inputText");
             }}
           >
             <Edit3 className="w-6 h-6" />
@@ -781,42 +1042,83 @@ const FloatChat = () => {
 
         <div className="flex-1 px-6 overflow-y-auto custom-scrollbar">
           <div className="space-y-3">
-            <h3 className={`text-lg font-semibold ${themeClasses.textMuted} px-2 py-2 tracking-wide`}>Recent Chats</h3>
-            {chatHistory.map((chat, index) => (
-              <div 
-                key={chat.id} 
-                className={`group p-4 ${themeClasses.cardHoverBg} rounded-xl cursor-pointer transition-all duration-300 border ${themeClasses.border} hover:shadow-2xl hover:scale-[1.02] animate-slide-in ${index % 2 === 0 ? 'animate-delay-200' : 'animate-delay-400'}`}
-                style={{ animationDelay: `${index * 100}ms` }}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-lg font-semibold ${themeClasses.text} truncate`}>{chat.title}</p>
-                    <p className={`text-base ${themeClasses.textMuted} truncate mt-1`}>{chat.snippet}</p>
-                    <p className={`text-base ${themeClasses.textMuted} mt-1`}>{chat.date}</p>
-                  </div>
-                  <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                    <button className={`p-2 ${themeClasses.buttonHoverBg} rounded-lg transition-all duration-200 hover:scale-110`}>
-                      <Star className={`w-5 h-5 ${chat.starred ? 'text-yellow-500 fill-yellow-500 animate-pulse-slow' : themeClasses.textMuted}`} />
-                    </button>
-                    <button className={`p-2 ${themeClasses.buttonHoverBg} rounded-lg transition-all duration-200 hover:scale-110`}>
-                      <MoreVertical className={`w-5 h-5 ${themeClasses.textMuted}`} />
-                    </button>
+            <h3
+              className={`text-lg font-semibold ${themeClasses.textMuted} px-2 py-2 tracking-wide`}
+            >
+              Recent Chats
+            </h3>
+            {chatHistory.length === 0 ? (
+              <div className={`${themeClasses.cardBg} rounded-xl p-6 text-center`}>
+                <p className={`${themeClasses.textMuted} text-sm`}>
+                  {isAuthenticated()
+                    ? "No chat history yet. Start chatting!"
+                    : "Log in to view your chat history"}
+                </p>
+              </div>
+            ) : (
+              chatHistory.map((chat, index) => (
+                <div
+                  key={chat.id}
+                  className={`group p-4 ${themeClasses.cardHoverBg} rounded-xl cursor-pointer transition-all duration-300 border ${themeClasses.border} hover:shadow-2xl hover:scale-[1.02] animate-slide-in ${index % 2 === 0 ? "animate-delay-200" : "animate-delay-400"}`}
+                  style={{ animationDelay: `${index * 100}ms` }}
+                  onClick={() => {
+                    setInputText(chat.title.replace("...", ""));
+                  }}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className={`text-lg font-semibold ${themeClasses.text} truncate`}
+                      >
+                        {chat.title}
+                      </p>
+                      <p
+                        className={`text-base ${themeClasses.textMuted} truncate mt-1`}
+                      >
+                        {chat.snippet}
+                      </p>
+                      <p className={`text-base ${themeClasses.textMuted} mt-1`}>
+                        {chat.date}
+                      </p>
+                      {chat.viz_type && (
+                        <span className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full mt-1">
+                          {chat.viz_type}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                      <button
+                        className={`p-2 ${themeClasses.buttonHoverBg} rounded-lg transition-all duration-200 hover:scale-110`}
+                      >
+                        <Star
+                          className={`w-5 h-5 ${chat.starred ? "text-yellow-500 fill-yellow-500 animate-pulse-slow" : themeClasses.textMuted}`}
+                        />
+                      </button>
+                      <button
+                        className={`p-2 ${themeClasses.buttonHoverBg} rounded-lg transition-all duration-200 hover:scale-110`}
+                      >
+                        <MoreVertical className={`w-5 h-5 ${themeClasses.textMuted}`} />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 
         <div className={`p-6 ${themeClasses.border} border-t space-y-3`}>
           <button
             className={`w-full text-left p-4 ${themeClasses.cardHoverBg} rounded-xl flex items-center space-x-3 transition-all duration-200 ${themeClasses.textSecondary} hover:shadow-xl hover:scale-[1.02]`}
-            onClick={() => navigate('/dashboard')}
+            onClick={() => navigate("/dashboard")}
           >
             <BarChart3 className="w-6 h-6 animate-float" />
             <span className="text-base font-semibold">Dashboard</span>
           </button>
-          <button onClick={() => navigate("/profile")} className={`w-full text-left p-4 ${themeClasses.cardHoverBg} rounded-xl flex items-center space-x-3 transition-all duration-200 ${themeClasses.textSecondary} hover:shadow-xl hover:scale-[1.02]`}>
+          <button
+            onClick={() => navigate("/profile")}
+            className={`w-full text-left p-4 ${themeClasses.cardHoverBg} rounded-xl flex items-center space-x-3 transition-all duration-200 ${themeClasses.textSecondary} hover:shadow-xl hover:scale-[1.02]`}
+          >
             <Settings className="w-6 h-6 animate-float" />
             <span className="text-base font-semibold">Settings</span>
           </button>
@@ -824,16 +1126,18 @@ const FloatChat = () => {
       </div>
 
       {sidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 lg:hidden transition-all duration-300"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       <div className="flex-1 flex flex-col">
-        <div className={`${themeClasses.bg} ${themeClasses.borderLight} border-b px-6 py-5 flex items-center justify-between shadow-lg`}>
+        <div
+          className={`${themeClasses.bg} ${themeClasses.borderLight} border-b px-6 py-5 flex items-center justify-between shadow-lg`}
+        >
           <div className="flex items-center space-x-3">
-            <button 
+            <button
               onClick={() => setSidebarOpen(true)}
               className={`lg:hidden p-3 ${themeClasses.hoverBg} rounded-xl transition-all duration-200 hover:scale-110 shadow-md`}
             >
@@ -841,20 +1145,29 @@ const FloatChat = () => {
             </button>
             <div className="flex items-center space-x-3">
               <Sparkles className="w-7 h-7 text-blue-500 animate-pulse-slow" />
-              <span className={`text-2xl font-bold ${themeClasses.text} tracking-tight`}>FloatChat</span>
+              <span
+                className={`text-2xl font-bold ${themeClasses.text} tracking-tight`}
+              >
+                FloatChat
+              </span>
             </div>
           </div>
           <div className="flex items-center space-x-3">
-            <button 
+            <button
               onClick={() => setDarkMode(!darkMode)}
               className={`p-3 ${themeClasses.hoverBg} rounded-xl ${themeClasses.textMuted} transition-all duration-200 hover:scale-110 shadow-md`}
             >
               {darkMode ? <Sun className="w-6 h-6" /> : <Moon className="w-6 h-6" />}
             </button>
-            <button className={`p-3 ${themeClasses.hoverBg} rounded-xl ${themeClasses.textMuted} transition-all duration-200 hover:scale-110 shadow-md`}>
+            <button
+              onClick={handleShare}
+              className={`p-3 ${themeClasses.hoverBg} rounded-xl ${themeClasses.textMuted} transition-all duration-200 hover:scale-110 shadow-md`}
+            >
               <Share className="w-6 h-6" />
             </button>
-            <button className={`p-3 ${themeClasses.hoverBg} rounded-xl ${themeClasses.textMuted} transition-all duration-200 hover:scale-110 shadow-md`}>
+            <button
+              className={`p-3 ${themeClasses.hoverBg} rounded-xl ${themeClasses.textMuted} transition-all duration-200 hover:scale-110 shadow-md`}
+            >
               <MoreVertical className="w-6 h-6" />
             </button>
           </div>
@@ -864,19 +1177,27 @@ const FloatChat = () => {
           {messages.length === 0 ? (
             <div className="max-w-5xl mx-auto px-6 py-16">
               <div className="text-center mb-12 animate-slide-in">
-                <div className={`w-24 h-24 ${themeClasses.accent} rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl animate-float`}>
+                <div
+                  className={`w-24 h-24 ${themeClasses.accent} rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl animate-float`}
+                >
                   <Waves className="w-12 h-12 text-white" />
                 </div>
-                <h1 className={`text-4xl font-extrabold ${themeClasses.text} mb-4 tracking-tight`}>
+                <h1
+                  className={`text-4xl font-extrabold ${themeClasses.text} mb-4 tracking-tight`}
+                >
                   Welcome to FloatChat
                 </h1>
-                <p className={`text-xl ${themeClasses.textSecondary} max-w-2xl mx-auto mb-6 font-semibold leading-relaxed`}>
+                <p
+                  className={`text-xl ${themeClasses.textSecondary} max-w-2xl mx-auto mb-6 font-semibold leading-relaxed`}
+                >
                   Your AI-powered assistant for exploring and analyzing ARGO ocean data with precision and ease.
                 </p>
-                
+
                 <div className="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4 text-base mb-6">
-                  <span className={`${themeClasses.textMuted} font-semibold`}>💬 Type your query or</span>
-                  
+                  <span className={`${themeClasses.textMuted} font-semibold`}>
+                    💬 Type your query or
+                  </span>
+
                   {voiceSupport?.supported ? (
                     voiceEnabled ? (
                       <button
@@ -890,9 +1211,9 @@ const FloatChat = () => {
                       <button
                         onClick={enableVoiceInput}
                         className={`inline-flex items-center space-x-2 px-5 py-3 ${themeClasses.accent} text-white rounded-xl font-semibold shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base`}
-                        disabled={voiceStatus === 'requesting'}
+                        disabled={voiceStatus === "requesting"}
                       >
-                        {voiceStatus === 'requesting' ? (
+                        {voiceStatus === "requesting" ? (
                           <>
                             <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                             <span>Enabling...</span>
@@ -917,10 +1238,14 @@ const FloatChat = () => {
                 </div>
 
                 {getVoiceSupportMessage()}
-                
+
                 {!voiceEnabled && voiceSupport?.supported && (
-                  <p className={`text-base ${themeClasses.textMuted} mt-3 max-w-md mx-auto font-semibold`}>
-                    🔒 Voice input is disabled by default for privacy. Click "Enable Voice" to allow microphone access for hands-free ocean data queries.
+                  <p
+                    className={`text-base ${themeClasses.textMuted} mt-3 max-w-md mx-auto font-semibold`}
+                  >
+                    🔒 Voice input is disabled by default for privacy. Click
+                    "Enable Voice" to allow microphone access for hands-free
+                    ocean data queries.
                   </p>
                 )}
               </div>
@@ -934,12 +1259,22 @@ const FloatChat = () => {
                     style={{ animationDelay: `${index * 150}ms` }}
                   >
                     <div className="flex items-start space-x-4">
-                      <div className={`w-14 h-14 ${themeClasses.cardBg} rounded-xl flex items-center justify-center text-blue-500 group-hover:bg-blue-50 ${darkMode ? 'group-hover:bg-blue-900/50' : ''} transition-all duration-300 shadow-lg group-hover:shadow-xl`}>
+                      <div
+                        className={`w-14 h-14 ${themeClasses.cardBg} rounded-xl flex items-center justify-center text-blue-500 group-hover:bg-blue-50 ${darkMode ? "group-hover:bg-blue-900/50" : ""} transition-all duration-300 shadow-lg group-hover:shadow-xl`}
+                      >
                         {prompt.icon}
                       </div>
                       <div className="flex-1">
-                        <h3 className={`text-xl font-semibold ${themeClasses.text} mb-2 tracking-tight`}>{prompt.title}</h3>
-                        <p className={`${themeClasses.textSecondary} text-base leading-relaxed font-semibold`}>{prompt.description}</p>
+                        <h3
+                          className={`text-xl font-semibold ${themeClasses.text} mb-2 tracking-tight`}
+                        >
+                          {prompt.title}
+                        </h3>
+                        <p
+                          className={`${themeClasses.textSecondary} text-base leading-relaxed font-semibold`}
+                        >
+                          {prompt.description}
+                        </p>
                       </div>
                     </div>
                   </button>
@@ -949,32 +1284,44 @@ const FloatChat = () => {
           ) : (
             <div className="max-w-5xl mx-auto px-6 py-8 space-y-6">
               {messages.map((message, idx) => {
-                const isLastBotMsg = message.type === 'bot' && 
-                  idx === messages.length - 1 && 
-                  (message.hasVisualization || /visualization|chart|plot|map|graph/i.test(message.content));
-                
+                const isLastBotMsg =
+                  message.type === "bot" &&
+                  idx === messages.length - 1 &&
+                  (message.hasVisualization ||
+                    /visualization|chart|plot|map|graph/i.test(message.content));
+
                 return (
-                  <div key={message.id} className={`flex items-start space-x-4 ${message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''} animate-slide-in`}>
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 shadow-xl ${
-                      message.type === 'user' 
-                        ? 'bg-blue-500 text-white' 
-                        : 'bg-gradient-to-br from-purple-500 to-pink-500 text-white'
-                    } transition-all duration-200 hover:scale-110`}>
-                      {message.type === 'user' ? <User className="w-6 h-6" /> : <Sparkles className="w-6 h-6 animate-pulse-slow" />}
+                  <div
+                    key={message.id}
+                    className={`flex items-start space-x-4 ${message.type === "user" ? "flex-row-reverse space-x-reverse" : ""} animate-slide-in`}
+                  >
+                    <div
+                      className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 shadow-xl ${message.type === "user" ? "bg-blue-500 text-white" : "bg-gradient-to-br from-purple-500 to-pink-500 text-white"} transition-all duration-200 hover:scale-110`}
+                    >
+                      {message.type === "user" ? (
+                        <User className="w-6 h-6" />
+                      ) : (
+                        <Sparkles className="w-6 h-6 animate-pulse-slow" />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className={`prose prose-gray max-w-none ${message.type === 'user' ? 'text-right' : ''}`}>
-                        <div className={`inline-block p-6 rounded-2xl shadow-xl ${
-                          message.type === 'user' 
-                            ? 'bg-blue-500 text-white' 
-                            : `${themeClasses.botMessageBg} ${themeClasses.text}`
-                        } transition-all duration-200 hover:shadow-2xl`}>
-                          <p className="whitespace-pre-wrap m-0 text-lg font-semibold leading-relaxed">{message.content}</p>
+                      <div
+                        className={`prose prose-gray max-w-none ${message.type === "user" ? "text-right" : ""}`}
+                      >
+                        <div
+                          className={`inline-block p-6 rounded-2xl shadow-xl ${message.type === "user" ? "bg-blue-500 text-white" : `${themeClasses.botMessageBg} ${themeClasses.text}`} transition-all duration-200 hover:shadow-2xl`}
+                        >
+                          <p className="whitespace-pre-wrap m-0 text-lg font-semibold leading-relaxed">
+                            {message.content}
+                          </p>
                           {isLastBotMsg && lastVizData && (
                             <button
                               onClick={() => {
-                                navigate('/dashboard', {
-                                  state: { vizData: lastVizData, vizTab: lastVizTab }
+                                navigate("/dashboard", {
+                                  state: {
+                                    vizData: lastVizData,
+                                    vizTab: lastVizTab,
+                                  },
                                 });
                               }}
                               className="mt-4 mr-2 px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-xl shadow-xl hover:shadow-2xl hover:scale-105 transition-all duration-200 font-semibold text-base"
@@ -993,15 +1340,20 @@ const FloatChat = () => {
                           )}
                         </div>
                       </div>
-                      <p className={`text-base ${themeClasses.textMuted} mt-2 font-semibold ${message.type === 'user' ? 'text-right' : ''}`}>
+                      <p
+                        className={`text-base ${themeClasses.textMuted} mt-2 font-semibold ${message.type === "user" ? "text-right" : ""}`}
+                      >
                         {(() => {
                           let dateObj = message.timestamp;
-                          if (typeof dateObj === 'string') {
+                          if (typeof dateObj === "string") {
                             dateObj = new Date(dateObj);
                           }
-                          return dateObj && typeof dateObj.toLocaleTimeString === 'function'
-                            ? dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                            : '';
+                          return dateObj && typeof dateObj.toLocaleTimeString === "function"
+                            ? dateObj.toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "";
                         })()}
                       </p>
                     </div>
@@ -1014,11 +1366,21 @@ const FloatChat = () => {
                   <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-xl">
                     <Sparkles className="w-6 h-6 text-white animate-pulse-slow" />
                   </div>
-                  <div className={`${themeClasses.botMessageBg} p-6 rounded-2xl shadow-xl`}>
+                  <div
+                    className={`${themeClasses.botMessageBg} p-6 rounded-2xl shadow-xl`}
+                  >
                     <div className="flex space-x-2">
-                      <div className={`w-3 h-3 ${themeClasses.textMuted} rounded-full animate-bounce`}></div>
-                      <div className={`w-3 h-3 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.1s' }}></div>
-                      <div className={`w-3 h-3 ${themeClasses.textMuted} rounded-full animate-bounce`} style={{ animationDelay: '0.2s' }}></div>
+                      <div
+                        className={`w-3 h-3 ${themeClasses.textMuted} rounded-full animate-bounce`}
+                      ></div>
+                      <div
+                        className={`w-3 h-3 ${themeClasses.textMuted} rounded-full animate-bounce`}
+                        style={{ animationDelay: "0.1s" }}
+                      ></div>
+                      <div
+                        className={`w-3 h-3 ${themeClasses.textMuted} rounded-full animate-bounce`}
+                        style={{ animationDelay: "0.2s" }}
+                      ></div>
                     </div>
                   </div>
                 </div>
@@ -1028,24 +1390,34 @@ const FloatChat = () => {
           )}
         </div>
 
-        <div className={`${themeClasses.borderLight} border-t ${themeClasses.bg} shadow-xl`}>
+        <div
+          className={`${themeClasses.borderLight} border-t ${themeClasses.bg} shadow-xl`}
+        >
           <div className="max-w-5xl mx-auto px-6 py-8">
             <div className="relative">
-              <div className={`flex items-end space-x-4 ${themeClasses.inputBg} rounded-3xl p-5 ${themeClasses.inputBorder} border focus-within:${themeClasses.inputFocus} focus-within:ring-4 transition-all duration-200 shadow-xl hover:shadow-2xl`}>
+              <div
+                className={`flex items-end space-x-4 ${themeClasses.inputBg} rounded-3xl p-5 ${themeClasses.inputBorder} border focus-within:${themeClasses.inputFocus} focus-within:ring-4 transition-all duration-200 shadow-xl hover:shadow-2xl`}
+              >
                 <textarea
                   ref={inputRef}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder={isVoiceActive ? "🎤 Listening... Speak your ocean data query" : !voiceSupport?.supported ? "Ask FloatChat about ocean data..." : !voiceEnabled ? "Ask FloatChat about ocean data... (Enable voice input above)" : "Ask FloatChat about ocean data... or tap the mic to speak"}
-                  className={`flex-1 bg-transparent border-none resize-none focus:outline-none placeholder-gray-500 ${themeClasses.text} font-semibold text-lg ${
-                    isVoiceActive ? 'border-l-2 border-purple-400 pl-4' : ''
-                  }`}
+                  placeholder={
+                    isVoiceActive
+                      ? "🎤 Listening... Speak your ocean data query"
+                      : !voiceSupport?.supported
+                      ? "Ask FloatChat about ocean data..."
+                      : !voiceEnabled
+                      ? "Ask FloatChat about ocean data... (Enable voice input above)"
+                      : "Ask FloatChat about ocean data... or tap the mic to speak"
+                  }
+                  className={`flex-1 bg-transparent border-none resize-none focus:outline-none placeholder-gray-500 ${themeClasses.text} font-semibold text-lg ${isVoiceActive ? "border-l-2 border-purple-400 pl-4" : ""}`}
                   rows={1}
                   style={{
-                    minHeight: '28px',
-                    maxHeight: '200px',
-                    resize: 'none'
+                    minHeight: "28px",
+                    maxHeight: "200px",
+                    resize: "none",
                   }}
                   disabled={isVoiceActive}
                 />
@@ -1054,40 +1426,54 @@ const FloatChat = () => {
                     onClick={handleFileUpload}
                     className={`p-3 rounded-full transition-all duration-200 ${themeClasses.textMuted} hover:text-gray-600 ${themeClasses.buttonHoverBg} hover:scale-110 shadow-md disabled:opacity-50`}
                     title="Upload ARGO data file"
-                    disabled={fileStatus.status === 'uploading'}
+                    disabled={fileStatus.status === "uploading"}
                   >
                     <Paperclip className="w-6 h-6" />
                   </button>
                   <button
-                    onClick={voiceSupport?.supported ? (voiceEnabled ? toggleVoiceRecording : enableVoiceInput) : null}
+                    onClick={
+                      voiceSupport?.supported
+                        ? voiceEnabled
+                          ? toggleVoiceRecording
+                          : enableVoiceInput
+                        : null
+                    }
                     disabled={isMicDisabled()}
                     className={`p-3 rounded-full transition-all duration-200 ${getVoiceButtonClasses()} shadow-md hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed`}
-                    title={isVoiceActive ? "Stop listening" : !voiceSupport?.supported ? "Voice not supported in this browser" : !voiceEnabled ? "Enable voice input first" : "Start voice input"}
+                    title={
+                      isVoiceActive
+                        ? "Stop listening"
+                        : !voiceSupport?.supported
+                        ? "Voice not supported in this browser"
+                        : !voiceEnabled
+                        ? "Enable voice input first"
+                        : "Start voice input"
+                    }
                   >
                     {getVoiceIcon()}
                   </button>
                   <button
                     onClick={handleSendMessage}
-                    disabled={inputText.trim() === '' || isVoiceActive}
-                    className={`p-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-full transition-all duration-200 shadow-md hover:shadow-xl hover:scale-110 ${
-                      inputText.trim() !== '' && !isVoiceActive ? 'animate-pulse-slow' : ''
-                    }`}
+                    disabled={inputText.trim() === "" || isVoiceActive}
+                    className={`p-3 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-200 disabled:text-gray-400 text-white rounded-full transition-all duration-200 shadow-md hover:shadow-xl hover:scale-110 ${inputText.trim() !== "" && !isVoiceActive ? "animate-pulse-slow" : ""}`}
                   >
                     <Send className="w-6 h-5" />
                   </button>
                 </div>
               </div>
-              
-              {voiceStatus === 'listening' && (
+
+              {voiceStatus === "listening" && (
                 <div className="flex items-center justify-center mt-4 space-x-2">
                   <div className="w-3 h-3 bg-purple-500 rounded-full animate-ping"></div>
-                  <span className={`text-base ${themeClasses.textSecondary} font-semibold`}>
+                  <span
+                    className={`text-base ${themeClasses.textSecondary} font-semibold`}
+                  >
                     🎤 Listening... Speak clearly about ocean data queries
                   </span>
                 </div>
               )}
-              
-              {voiceStatus === 'error' && (
+
+              {voiceStatus === "error" && (
                 <div className="flex items-center justify-center mt-4">
                   <span className={`text-base text-red-500 font-semibold`}>
                     ❌ Microphone access required. Please allow access and try again.
@@ -1097,36 +1483,54 @@ const FloatChat = () => {
               {voiceError && (
                 <p className="text-red-500 text-xs mt-1">{voiceError}</p>
               )}
-              
-              {voiceStatus === 'requesting' && (
+
+              {voiceStatus === "requesting" && (
                 <div className="flex items-center justify-center mt-4">
                   <div className="w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mr-2"></div>
-                  <span className={`text-base ${themeClasses.textSecondary} font-semibold`}>
+                  <span
+                    className={`text-base ${themeClasses.textSecondary} font-semibold`}
+                  >
                     Requesting microphone permission...
                   </span>
                 </div>
               )}
 
-              {fileStatus.status !== 'idle' && (
+              {fileStatus.status !== "idle" && (
                 <div className="flex items-center justify-center mt-4">
-                  {fileStatus.status === 'uploading' && (
+                  {fileStatus.status === "uploading" && (
                     <>
                       <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mr-2"></div>
-                      <span className={`text-base ${themeClasses.textSecondary} font-semibold`}>{fileStatus.message}</span>
+                      <span
+                        className={`text-base ${themeClasses.textSecondary} font-semibold`}
+                      >
+                        {fileStatus.message}
+                      </span>
                     </>
                   )}
-                  {fileStatus.status === 'success' && (
-                    <span className={`text-base text-green-500 font-semibold`}>{fileStatus.message}</span>
+                  {fileStatus.status === "success" && (
+                    <span className={`text-base text-green-500 font-semibold`}>
+                      {fileStatus.message}
+                    </span>
                   )}
-                  {fileStatus.status === 'error' && (
-                    <span className={`text-base text-red-500 font-semibold`}>{fileStatus.message}</span>
+                  {fileStatus.status === "error" && (
+                    <span className={`text-base text-red-500 font-semibold`}>
+                      {fileStatus.message}
+                    </span>
                   )}
                 </div>
               )}
             </div>
             <div className="flex items-center justify-center mt-4">
-              <p className={`text-base ${themeClasses.textMuted} font-semibold`}>
-                {isVoiceActive ? '🎤 Voice input active - speak your query!' : !voiceSupport?.supported ? '💬 FloatChat works great with typing too!' : !voiceEnabled ? '🔒 Voice input disabled. Click the mic icon to enable microphone access.' : 'FloatChat can make mistakes. Consider checking important ocean data insights.'}
+              <p
+                className={`text-base ${themeClasses.textMuted} font-semibold`}
+              >
+                {isVoiceActive
+                  ? "🎤 Voice input active - speak your query!"
+                  : !voiceSupport?.supported
+                  ? "💬 FloatChat works great with typing too!"
+                  : !voiceEnabled
+                  ? "🔒 Voice input disabled. Click the mic icon to enable microphone access."
+                  : "FloatChat can make mistakes. Consider checking important ocean data insights."}
               </p>
             </div>
           </div>
