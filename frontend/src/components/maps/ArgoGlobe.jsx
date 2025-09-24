@@ -34,40 +34,26 @@ const ArgoGlobe = () => {
     controls.autoRotateSpeed = 0.18;
     controls.enablePan = false;
 
-    // Lights (brighter)
-    scene.add(new THREE.AmbientLight(0x8888ff, 1.0));
-    const sunLight = new THREE.DirectionalLight(0xffffff, 1.8);
+    // Lights (bright, no specular highlights)
+    scene.add(new THREE.AmbientLight(0x8888ff, 1.2));
+    const sunLight = new THREE.DirectionalLight(0xffffff, 2.0);
     sunLight.position.set(5, 3, 5);
     scene.add(sunLight);
 
-    // Earth (glossy + bright)
+    // Earth (with continents and oceans)
     const textureLoader = new THREE.TextureLoader();
-    const earthMaterial = new THREE.MeshPhongMaterial({
+    const earthMaterial = new THREE.MeshLambertMaterial({
       map: textureLoader.load(
         "https://raw.githubusercontent.com/turban/webgl-earth/master/images/2_no_clouds_4k.jpg"
       ),
-      specular: new THREE.Color("white"),
-      shininess: 40,
+      emissive: new THREE.Color(0x222222), // Slight emissive for brightness
+      emissiveIntensity: 0.3,
     });
     const earth = new THREE.Mesh(
       new THREE.SphereGeometry(1, 128, 128),
       earthMaterial
     );
     scene.add(earth);
-
-    // Clouds
-    const clouds = new THREE.Mesh(
-      new THREE.SphereGeometry(1.01, 128, 128),
-      new THREE.MeshPhongMaterial({
-        map: textureLoader.load(
-          "https://raw.githubusercontent.com/turban/webgl-earth/master/images/fair_clouds_4k.png"
-        ),
-        transparent: true,
-        opacity: 0.35,
-        depthWrite: false,
-      })
-    );
-    scene.add(clouds);
 
     // Data Points group
     const dataPointsGroup = new THREE.Group();
@@ -204,7 +190,6 @@ const ArgoGlobe = () => {
     const animate = (time) => {
       requestAnimationFrame(animate);
       controls.update();
-      clouds.rotation.y += 0.0006;
       earth.rotation.y += 0.0003;
 
       dataPointsGroup.children.forEach((child) => {
