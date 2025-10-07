@@ -26,16 +26,11 @@
 
 ## 🌊 UI Previews
 
-<table>
-  <tr>
-    <td>
-      <img src="https://ibb.co/tpBwLznV" alt="Landing Page" width="100%" />
-    </td>
-    <td>
-      <img src="https://ibb.co/1fwnwdLh" alt="Auth Page" width="100%" />
-    </td>
-  </tr>
-</table>
+| Landing Page | Auth Page |
+|--------------|-----------|
+| ![Landing Page](https://i.postimg.cc/nLj2Wg1Z/Screenshot-2025-09-29-195119.png) | ![Auth Page](https://i.postimg.cc/Sx57cVbB/Screenshot-2025-10-07-232154.png) |
+
+
 
 ---
 
