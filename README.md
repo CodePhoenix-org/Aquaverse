@@ -1,164 +1,156 @@
-***
+<!-- HEADER BANNER -->
+<p align="center">
+  <img src="https://readme-typing-svg.demolab.com?font=Orbitron&weight=700&size=28&duration=4500&pause=1200&color=2196F3&background=00000000&center=true&vCenter=true&multiline=true&width=900&lines=%F0%9F%8C%8A+Welcome+to+Aquaverse!;%F0%9F%8C%8A+Ocean+Intelligence+Platform+with+AI;%F0%9F%8C%8A+Data-Driven+Discovery+Below+the+Surface." alt="Animated Aquaverse Header" />
+</p>
 
-# Aquaverse
+<p align="center">
+  <img src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" />
+  <img src="https://img.shields.io/badge/React-%2361DAFB.svg?style=for-the-badge&logo=react&logoColor=black" />
+  <img src="https://img.shields.io/badge/Vite-%23646CFF.svg?style=for-the-badge&logo=vite&logoColor=white" />
+  <img src="https://img.shields.io/badge/Plotly-3F4F75?style=for-the-badge&logo=plotly&logoColor=white" />
+  <img src="https://img.shields.io/badge/ChromaDB-0A192F?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/PostgreSQL-336791?style=for-the-badge&logo=postgresql&logoColor=white" />
+  <img src="https://img.shields.io/badge/LLM-RAG-blueviolet?style=for-the-badge" />
+</p>  
 
-Aquaverse is an **end-to-end ocean data intelligence platform** developed under Smart India Hackathon (SIH). It streamlines the extraction, processing, search, and visualization of oceanographic datasets, enabling interactive research and discovery for scientists, students, and enthusiasts.
+<p align="center">
+  <strong>Explore, analyze, and visualize ocean data using AI-enhanced search, REST APIs, and interactive graphics.</strong><br/>
+  Built with <b>FastAPI + RAG backend</b> and a <b>React + Vite</b> frontend.
+</p>
 
-***
+<p align="center">
+  🔗 <a href="https://aquaverse-demo.com" target="_blank"><strong>Live Demo Coming Soon</strong></a>
+</p>
 
-## Table of Contents
+---
 
-- [Project Overview](#project-overview)
-- [Key Features](#key-features)
-- [Architecture Overview](#architecture-overview)
-- [Repository Structure](#repository-structure)
-- [Technology Stack](#technology-stack)
-- [Setup and Installation](#setup-and-installation)
-- [Typical Workflow](#typical-workflow)
-- [API Endpoints](#api-endpoints)
-- [Visualization and Usage](#visualization-and-usage)
-- [License](#license)
+## 🌊 UI Previews
 
-***
+| Landing Page | Auth Page |
+|--------------|-----------|
+| ![Landing Page](https://i.postimg.cc/nLj2Wg1Z/Screenshot-2025-09-29-195119.png) | ![Auth Page](https://i.postimg.cc/Sx57cVbB/Screenshot-2025-10-07-232154.png) |
 
-## Project Overview
 
-Aquaverse consolidates raw scientific float observations (e.g., ARGO NetCDF profiles) into searchable, summarized, and visual formats. It uses an **LLM-powered retrieval-augmented generation (RAG) backend** and a modern web frontend for interactive Q&A and analytics on ocean temperature, salinity, and other marine parameters.
 
-***
+---
 
-## Key Features
+## 🚀 Key Features
 
-- **Automated Data Pipeline:** Converts ARGO NetCDF profiles to Parquet format for fast, scalable processing.
-- **Knowledge-Enhanced Search:** ChromaDB-powered semantic search for context-aware Q&A using large language models.
-- **RESTful API:** FastAPI backend provides endpoints for authentication, user profiles, and chat-based data exploration.
-- **Interactive Visualization:** Jupyter/Plotly-based visuals for scientific insights.
-- **Geospatial and Temporal Queries:** Users can query by date, region, depth, temperature, salinity, and more.
+- 🌀 **Automated ARGO Data Pipeline:** Converts NetCDF profiles to Parquet for scalable analytics
+- 🤖 **Semantic Ocean Search:** ChromaDB-powered, LLM-augmented contextual queries
+- 🗣️ **Natural Language Q&A:** RAG backend translates questions to SQL, summarizes results with LLM
+- 🗺️ **Geospatial + Temporal Filtering:** Search by region, depth, time, and marine metrics
+- 📊 **Interactive Visualization:** Jupyter/Plotly for maps and time-series graphs
+- 🔒 **User Auth & Profiles:** Secure API endpoints for login, profile, and chat-based data exploration
 
-***
+---
 
-## Architecture Overview
+## 🛠️ Tech Stack
 
-**Data Flow:**
-1. **Data Ingestion:** Raw ARGO datasets are processed and stored in efficient formats (`data/` – `.nc` to `.parquet`).
-2. **Database:** Core parameters loaded into a relational (PostgreSQL/SQLAlchemy) DB & ChromaDB for embeddings.
-3. **RAG Backend:** FastAPI provides endpoints for queries. Natural language requests are translated into SQL, results interpreted with LLM summarization, and structured responses returned.
-4. **Frontend:** Built on React + Vite, with Plotly.js, Recharts, React Leaflet for geospatial/graphical data display.
+| Backend                 | Frontend             | Data & Search       |
+|:-----------------------:|:-------------------:|:-------------------:|
+| 🐍 FastAPI (Python)     | ⚛️ React + Vite     | 🧠 ChromaDB (Vector)|
+| 🗃️ PostgreSQL/SQLAlchemy| 🎨 Tailwind CSS     | 🗂️ Parquet + NetCDF |
+| 🔥 RAG + LLMs           | 📊 Plotly, Leaflet  | 🌍 Geospatial Query |
 
-***
+---
 
-## Repository Structure
+## 🏗️ Architecture Overview
 
+```mermaid
+graph TD
+  A[ARGO NetCDF Data] -->|Preprocessing| B[Parquet Files]
+  B -->|Load| C[(PostgreSQL DB)]
+  B -->|Embedding| D[ChromaDB Vector Store]
+  E[FastAPI RAG Backend] -->|REST API| F[React/Vite Frontend]
+  C -->|SQL Query| E
+  D -->|Semantic Search| E
+  E -->|LLM Summarization| F
+  F -->|Interactive Visuals| G[Plotly/Leaflet]
+  style A fill:#2196f3,stroke:#000,stroke-width:2px
+  style B fill:#9dd8fc,stroke:#000,stroke-width:2px
+  style C fill:#336791,stroke:#000,stroke-width:2px
+  style D fill:#0a192f,stroke:#000,stroke-width:2px
+  style E fill:#009688,stroke:#000,stroke-width:2px
+  style F fill:#61dafb,stroke:#000,stroke-width:2px
+  style G fill:#3f4f75,stroke:#000,stroke-width:2px
 ```
+
+---
+
+## 📁 Repository Structure
+
+```shell
 Aquaverse/
-│
-├── Data_processing_visuals/   # Jupyter notebooks – e.g., bgc_processing.ipynb for preprocessing/plotting
-├── backend/                   # Python FastAPI app, DB access, RAG, API, requirements.txt
-│   ├── main.py
-│   ├── rag/
-│   │   └── dataVisualisation.py
-│   └── requirements.txt
-├── data/                      # Raw & processed datasets (.nc, .parquet)
-├── db/chroma_db/              # Persistent ChromaDB store (vector database)
-├── frontend/                  # React + Tailwind + Plotly/Vite client
-│   └── package.json
-└── .gitignore                 # VCS exclusion rules
+ ├── Data_processing_visuals/   # Jupyter notebooks, e.g., bgc_processing.ipynb
+ ├── backend/                   # FastAPI backend, RAG logic, requirements.txt
+ │   ├── main.py
+ │   ├── rag/
+ │   │   └── dataVisualisation.py
+ │   └── requirements.txt
+ ├── data/                      # ARGO raw (.nc) & processed (.parquet) datasets
+ ├── db/chroma_db/              # ChromaDB vector store
+ ├── frontend/                  # React + Vite + Tailwind + Plotly client
+ │   └── package.json
+ └── .gitignore                 # VCS exclusion rules
 ```
 
-***
+---
 
-## Technology Stack
-
-**Backend:**
-- Python 3.10+, FastAPI, SQLAlchemy, psycopg2, ChromaDB, LangChain, Huggingface transformers, Jupyter, Streamlit, Plotly
-
-**Frontend:**
-- React 19, Vite, TailwindCSS, Recharts, Plotly.js, React-Leaflet, Framer Motion
-
-**Data & Search:**
-- NetCDF/Parquet processing (xarray, pandas, pyarrow)
-- ChromaDB (semantic vector search)
-- PostgreSQL (relational storage)
-
-***
-
-## Setup and Installation
-
-### 1. Clone the Repository
+## ⚡ Quickstart
 
 ```bash
-git clone https://github.com/CodePhoenix-org/Aquaverse.git
-cd Aquaverse
-```
+# 1. Clone
+git clone https://github.com/<your-username>/Aquaverse.git && cd Aquaverse
 
-### 2. Backend Setup
-
-```bash
+# 2. Setup Python backend
 cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-# Set up .env with DB_URI and optional OpenRouter API key for LLM chat
-```
 
-- To run FastAPI (development):
-  ```bash
-  uvicorn main:app --reload
-  ```
-
-### 3. Frontend Setup
-
-```bash
+# 3. Setup React frontend
 cd ../frontend
 npm install
-npm run dev  # Serves frontend at localhost:5173 by default
+
+# 4. Download or place ARGO data in /data, ensure .env files are configured
+
+# 5. Run backend
+cd ../backend
+uvicorn main:app --reload
+
+# 6. Run frontend
+cd ../frontend
+npm run dev
 ```
 
-### 4. Data Preparation
+---
 
-- Place or link your ARGO `.nc` NetCDF files in `data/`.
-- Use the provided Jupyter notebooks (e.g., `Data_processing_visuals/bgc_processing.ipynb`) for pre-processing and visualization.
-- Data pipeline scripts convert `.nc` to Parquet; backend scripts populate ChromaDB automatically as needed.
+## 🔑 API Endpoints
 
-***
+| Endpoint                | Description                           |
+|-------------------------|---------------------------------------|
+| `/auth/login`           | User authentication                   |
+| `/user/profile`         | Get/update user profile               |
+| `/data/query`           | Structured/semantic data queries      |
+| `/chat/ask`             | Natural language ocean Q&A            |
+| `/visuals/profile`      | Visualize temperature/salinity etc.   |
 
-## Typical Workflow
+---
 
-1. **Upload or sync new ARGO float files to `/data`.**
-2. **Run the conversion notebook or script to produce `/data/processed/argo_profiles.parquet`.**
-3. **Start the backend—on first run, ChromaDB is populated for fast context retrieval.**
-4. **Use the frontend to search, analyze, and visualize the data:**
-   - Ask natural language questions (e.g., "Show temperature near 9°N 68°E for 2025-03-11").
-   - Results are interpreted and visualized with Plotly/Recharts.
-5. **Advanced:** Use or fork the Jupyter notebooks for deeper stats or custom plots.
+## 🗺️ Visualization & Usage
 
-***
+- **Jupyter Notebooks:** Explore data processing in `Data_processing_visuals/`
+- **Frontend Dashboards:** View interactive maps & charts (`frontend/`)
+- **API Docs:** FastAPI provides auto-generated docs at `/docs`
 
-## API Endpoints (Backend)
+---
 
-- `GET /` – Health check
-- `POST /chat` – RAG-powered Q&A; body: `{ "query": "Show salinity in Indian Ocean..." }`
-- `GET /profiles`, `POST /auth` – Authentication and user management (extend as needed)
 
-***
 
-## Visualization and Usage
+## 💡 Inspired By
 
-- **Map Visuals:** React-Leaflet shows spatial coverage of float data.
-- **Profile Plots:** Query temperature/salinity by depth.
-- **Custom Queries:** Filter by region, time, and parameter using interactive UI or API.
-- **Summaries:** LLM generates accessible, non-technical data explanations for broader audiences.
+- ARGO Ocean Observatories
+- OpenAI, HuggingFace, ChromaDB, FastAPI
+- Modern Data Visualization & Science Platforms
 
-***
-
-## License
-
-This repository is for SIH 2025 demonstration and educational purposes. For reproduction and full license terms, see the `LICENSE` file.
-
-***
-
-**Note:** Update `.env` with correct DB connection and API keys. For advanced cloud deployment, configure Docker and cloud storage as required.
-
-***
-
-Feel free to adjust the stack, API, and workflow sections as your implementation evolves!
+---
