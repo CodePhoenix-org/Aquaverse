@@ -1,289 +1,335 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowDownTrayIcon, FunnelIcon } from '@heroicons/react/24/outline';
+import { useEffect, useMemo, useState } from "react";
+import { ArrowDownTrayIcon, FunnelIcon } from "@heroicons/react/24/outline";
 
+const sampleTableData = [
+  {
+    id: 1,
+    floatId: "ARGO_001",
+    date: "2023-03-15",
+    latitude: -10.5,
+    longitude: 75.2,
+    depth: 0,
+    temperature: 28.5,
+    salinity: 34.2,
+    oxygen: 220,
+    status: "Good",
+  },
+  {
+    id: 2,
+    floatId: "ARGO_001",
+    date: "2023-03-15",
+    latitude: -10.5,
+    longitude: 75.2,
+    depth: 100,
+    temperature: 22.3,
+    salinity: 34.8,
+    oxygen: 180,
+    status: "Good",
+  },
+  {
+    id: 3,
+    floatId: "ARGO_002",
+    date: "2023-03-14",
+    latitude: -15.3,
+    longitude: 82.1,
+    depth: 0,
+    temperature: 29.1,
+    salinity: 34.1,
+    oxygen: 215,
+    status: "Good",
+  },
+  {
+    id: 4,
+    floatId: "ARGO_002",
+    date: "2023-03-14",
+    latitude: -15.3,
+    longitude: 82.1,
+    depth: 200,
+    temperature: 18.7,
+    salinity: 35.1,
+    oxygen: 150,
+    status: "Good",
+  },
+  {
+    id: 5,
+    floatId: "ARGO_003",
+    date: "2023-02-28",
+    latitude: -8.7,
+    longitude: 70.8,
+    depth: 50,
+    temperature: 25.1,
+    salinity: 34.6,
+    oxygen: 200,
+    status: "Questionable",
+  },
+];
 
-const DataTable = ({ data }) => {
+const columns = [
+  { key: "floatId", label: "Float ID" },
+  { key: "date", label: "Date" },
+  { key: "latitude", label: "Latitude" },
+  { key: "longitude", label: "Longitude" },
+  { key: "depth", label: "Depth (m)" },
+  { key: "temperature", label: "Temp (C)" },
+  { key: "salinity", label: "Salinity (PSU)" },
+  { key: "oxygen", label: "O2 (umol/kg)" },
+  { key: "status", label: "Status" },
+];
+
+function downloadFile(name, content, type = "text/plain;charset=utf-8") {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+export default function DataTable({ data }) {
   const [tableData, setTableData] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
+  const [sortConfig, setSortConfig] = useState({ key: null, direction: "asc" });
   const [filters, setFilters] = useState({
-    floatId: '',
-    dateRange: '',
-    parameter: 'all'
+    floatId: "",
+    dateRange: "",
+    parameter: "all",
   });
   const [showFilters, setShowFilters] = useState(false);
 
-  // Sample data for demonstration
-  const sampleTableData = [
-    {
-      id: 1,
-      floatId: 'ARGO_001',
-      date: '2023-03-15',
-      latitude: -10.5,
-      longitude: 75.2,
-      depth: 0,
-      temperature: 28.5,
-      salinity: 34.2,
-      oxygen: 220,
-      status: 'Good'
-    },
-    {
-      id: 2,
-      floatId: 'ARGO_001',
-      date: '2023-03-15',
-      latitude: -10.5,
-      longitude: 75.2,
-      depth: 100,
-      temperature: 22.3,
-      salinity: 34.8,
-      oxygen: 180,
-      status: 'Good'
-    },
-    {
-      id: 3,
-      floatId: 'ARGO_002',
-      date: '2023-03-14',
-      latitude: -15.3,
-      longitude: 82.1,
-      depth: 0,
-      temperature: 29.1,
-      salinity: 34.1,
-      oxygen: 215,
-      status: 'Good'
-    },
-    {
-      id: 4,
-      floatId: 'ARGO_002',
-      date: '2023-03-14',
-      latitude: -15.3,
-      longitude: 82.1,
-      depth: 200,
-      temperature: 18.7,
-      salinity: 35.1,
-      oxygen: 150,
-      status: 'Good'
-    },
-    {
-      id: 5,
-      floatId: 'ARGO_003',
-      date: '2023-02-28',
-      latitude: -8.7,
-      longitude: 70.8,
-      depth: 50,
-      temperature: 25.1,
-      salinity: 34.6,
-      oxygen: 200,
-      status: 'Questionable'
-    }
-  ];
-
   useEffect(() => {
-    if (data && data.table) {
+    if (data?.table) {
       setTableData(data.table);
-      setFilteredData(data.table);
     } else {
       setTableData(sampleTableData);
-      setFilteredData(sampleTableData);
     }
   }, [data]);
 
-  useEffect(() => {
-    applyFilters();
-  }, [filters, tableData]);
-
-  const applyFilters = () => {
+  const filteredData = useMemo(() => {
     let filtered = [...tableData];
 
     if (filters.floatId) {
-      filtered = filtered.filter(row => 
-        row.floatId.toLowerCase().includes(filters.floatId.toLowerCase())
+      filtered = filtered.filter((row) =>
+        row.floatId?.toLowerCase().includes(filters.floatId.toLowerCase())
       );
     }
 
-    if (filters.parameter !== 'all') {
-      // This would be more meaningful with actual parameter filtering logic
+    if (filters.dateRange) {
+      filtered = filtered.filter((row) => row.date === filters.dateRange);
     }
 
-    setFilteredData(filtered);
-  };
+    if (sortConfig.key) {
+      filtered.sort((a, b) => {
+        if (a[sortConfig.key] < b[sortConfig.key]) {
+          return sortConfig.direction === "asc" ? -1 : 1;
+        }
+        if (a[sortConfig.key] > b[sortConfig.key]) {
+          return sortConfig.direction === "asc" ? 1 : -1;
+        }
+        return 0;
+      });
+    }
+
+    return filtered;
+  }, [filters, sortConfig, tableData]);
 
   const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-
-    const sortedData = [...filteredData].sort((a, b) => {
-      if (a[key] < b[key]) return direction === 'asc' ? -1 : 1;
-      if (a[key] > b[key]) return direction === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    setFilteredData(sortedData);
-    setSortConfig({ key, direction });
+    setSortConfig((current) => ({
+      key,
+      direction:
+        current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
   };
 
-  const handleExport = async (format) => {
-    try {
-      await apiService.exportData(format, {
-        data: filteredData,
-        filters: filters
-      });
-    } catch (error) {
-      alert('Export failed. Please try again.');
+  const handleExport = (format) => {
+    if (!format) return;
+
+    if (format === "csv") {
+      const rows = [
+        columns.map((column) => column.label).join(","),
+        ...filteredData.map((row) =>
+          columns.map((column) => JSON.stringify(row[column.key] ?? "")).join(",")
+        ),
+      ].join("\n");
+      downloadFile("aquaverse-data.csv", rows, "text/csv;charset=utf-8");
+      return;
+    }
+
+    if (format === "ascii") {
+      const rows = filteredData
+        .map((row) => columns.map((column) => `${column.label}: ${row[column.key] ?? ""}`).join(" | "))
+        .join("\n");
+      downloadFile("aquaverse-data.txt", rows);
+      return;
+    }
+
+    if (format === "json") {
+      downloadFile(
+        "aquaverse-data.json",
+        JSON.stringify(filteredData, null, 2),
+        "application/json;charset=utf-8"
+      );
     }
   };
 
   const getSortIcon = (columnKey) => {
-    if (sortConfig.key === columnKey) {
-      return sortConfig.direction === 'asc' ? '↑' : '↓';
-    }
-    return '';
+    if (sortConfig.key !== columnKey) return "";
+    return sortConfig.direction === "asc" ? "↑" : "↓";
   };
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
-        <div className="flex justify-between items-center">
-          <div>
-            <h3 className="text-lg font-medium text-gray-900">Data Table</h3>
-            <p className="text-sm text-gray-600">
-              Tabular view of ARGO float measurements
-            </p>
-          </div>
-          <div className="flex space-x-2">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center space-x-1 px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="premium-kicker">Structured View</p>
+          <h3 className="mt-2 font-display text-2xl font-semibold text-white">
+            Tabular measurement detail
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-slate-300">
+            Filter down to a clean subset, sort by signal, and export without leaving the dashboard.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={() => setShowFilters((value) => !value)}
+            className="premium-button-secondary"
+          >
+            <FunnelIcon className="h-4 w-4" />
+            {showFilters ? "Hide filters" : "Show filters"}
+          </button>
+          <div className="relative">
+            <select
+              onChange={(event) => handleExport(event.target.value)}
+              className="premium-select min-w-[10rem]"
+              defaultValue=""
             >
-              <FunnelIcon className="w-4 h-4" />
-              <span>Filter</span>
-            </button>
-            <div className="relative">
-              <select
-                onChange={(e) => handleExport(e.target.value)}
-                className="bg-blue-500 text-white px-3 py-1 rounded-md cursor-pointer"
-                defaultValue=""
-              >
-                <option value="" disabled>Export</option>
-                <option value="csv">CSV</option>
-                <option value="ascii">ASCII</option>
-                <option value="netcdf">NetCDF</option>
-              </select>
-            </div>
+              <option value="" disabled>
+                Export
+              </option>
+              <option value="csv">CSV</option>
+              <option value="ascii">ASCII</option>
+              <option value="json">JSON</option>
+            </select>
           </div>
         </div>
       </div>
 
-      {/* Filters */}
-      {showFilters && (
-        <div className="bg-white border-b border-gray-200 p-3">
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Float ID
-              </label>
-              <input
-                type="text"
-                value={filters.floatId}
-                onChange={(e) => setFilters({ ...filters, floatId: e.target.value })}
-                placeholder="Enter float ID"
-                className="w-full px-3 py-1 border border-gray-300 rounded-md text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Parameter
-              </label>
-              <select
-                value={filters.parameter}
-                onChange={(e) => setFilters({ ...filters, parameter: e.target.value })}
-                className="w-full px-3 py-1 border border-gray-300 rounded-md text-sm"
-              >
-                <option value="all">All Parameters</option>
-                <option value="temperature">Temperature</option>
-                <option value="salinity">Salinity</option>
-                <option value="oxygen">Oxygen</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Date Range
-              </label>
-              <input
-                type="date"
-                value={filters.dateRange}
-                onChange={(e) => setFilters({ ...filters, dateRange: e.target.value })}
-                className="w-full px-3 py-1 border border-gray-300 rounded-md text-sm"
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {showFilters ? (
+        <div className="grid gap-4 md:grid-cols-3">
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-slate-200">Float ID</span>
+            <input
+              type="text"
+              value={filters.floatId}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, floatId: event.target.value }))
+              }
+              placeholder="Enter float ID"
+              className="premium-input"
+            />
+          </label>
 
-      {/* Table */}
-      <div className="flex-1 overflow-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-100 sticky top-0">
-            <tr>
-              {[
-                { key: 'floatId', label: 'Float ID' },
-                { key: 'date', label: 'Date' },
-                { key: 'latitude', label: 'Latitude' },
-                { key: 'longitude', label: 'Longitude' },
-                { key: 'depth', label: 'Depth (m)' },
-                { key: 'temperature', label: 'Temp (°C)' },
-                { key: 'salinity', label: 'Salinity (PSU)' },
-                { key: 'oxygen', label: 'O₂ (μmol/kg)' },
-                { key: 'status', label: 'Status' }
-              ].map((column) => (
-                <th
-                  key={column.key}
-                  className="px-4 py-2 text-left font-medium text-gray-700 cursor-pointer hover:bg-gray-200"
-                  onClick={() => handleSort(column.key)}
-                >
-                  <div className="flex items-center space-x-1">
-                    <span>{column.label}</span>
-                    <span className="text-xs">{getSortIcon(column.key)}</span>
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filteredData.map((row) => (
-              <tr key={row.id} className="border-b border-gray-200 hover:bg-gray-50">
-                <td className="px-4 py-2 font-medium text-blue-600">{row.floatId}</td>
-                <td className="px-4 py-2">{row.date}</td>
-                <td className="px-4 py-2">{row.latitude?.toFixed(2)}</td>
-                <td className="px-4 py-2">{row.longitude?.toFixed(2)}</td>
-                <td className="px-4 py-2">{row.depth}</td>
-                <td className="px-4 py-2">{row.temperature?.toFixed(1)}</td>
-                <td className="px-4 py-2">{row.salinity?.toFixed(1)}</td>
-                <td className="px-4 py-2">{row.oxygen}</td>
-                <td className="px-4 py-2">
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    row.status === 'Good' 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {row.status}
-                  </span>
-                </td>
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-slate-200">Parameter</span>
+            <select
+              value={filters.parameter}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, parameter: event.target.value }))
+              }
+              className="premium-select"
+            >
+              <option value="all">All parameters</option>
+              <option value="temperature">Temperature</option>
+              <option value="salinity">Salinity</option>
+              <option value="oxygen">Oxygen</option>
+            </select>
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-slate-200">Date</span>
+            <input
+              type="date"
+              value={filters.dateRange}
+              onChange={(event) =>
+                setFilters((current) => ({ ...current, dateRange: event.target.value }))
+              }
+              className="premium-input"
+            />
+          </label>
+        </div>
+      ) : null}
+
+      <div className="overflow-hidden rounded-[24px] border border-white/10">
+        <div className="overflow-auto scrollbar-thin">
+          <table className="min-w-full text-left text-sm text-slate-200">
+            <thead className="bg-white/[0.05] text-slate-400">
+              <tr>
+                {columns.map((column) => (
+                  <th
+                    key={column.key}
+                    className="cursor-pointer px-4 py-3 font-medium transition-colors hover:bg-white/[0.04]"
+                    onClick={() => handleSort(column.key)}
+                  >
+                    <div className="flex items-center gap-2">
+                      {column.label}
+                      <span className="text-xs text-cyan-200">{getSortIcon(column.key)}</span>
+                    </div>
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-white/[0.06]">
+              {filteredData.map((row) => (
+                <tr key={row.id} className="transition-colors hover:bg-white/[0.03]">
+                  <td className="px-4 py-3 font-medium text-cyan-100">{row.floatId}</td>
+                  <td className="px-4 py-3">{row.date}</td>
+                  <td className="px-4 py-3">{row.latitude?.toFixed?.(2) ?? row.latitude}</td>
+                  <td className="px-4 py-3">{row.longitude?.toFixed?.(2) ?? row.longitude}</td>
+                  <td className="px-4 py-3">{row.depth}</td>
+                  <td className="px-4 py-3">{row.temperature?.toFixed?.(1) ?? row.temperature}</td>
+                  <td className="px-4 py-3">{row.salinity?.toFixed?.(1) ?? row.salinity}</td>
+                  <td className="px-4 py-3">{row.oxygen}</td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                        row.status === "Good"
+                          ? "bg-emerald-300/12 text-emerald-200"
+                          : "bg-amber-300/12 text-amber-200"
+                      }`}
+                    >
+                      {row.status}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* Footer */}
-      <div className="bg-gray-50 border-t border-gray-200 px-4 py-2">
-        <div className="text-sm text-gray-600">
-          Showing {filteredData.length} of {tableData.length} records
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="premium-card p-4">
+          <p className="text-sm text-slate-300">Visible rows</p>
+          <p className="mt-2 font-display text-2xl font-semibold text-white">
+            {filteredData.length}
+          </p>
+        </div>
+        <div className="premium-card p-4">
+          <p className="text-sm text-slate-300">Total rows</p>
+          <p className="mt-2 font-display text-2xl font-semibold text-white">
+            {tableData.length}
+          </p>
+        </div>
+        <div className="premium-card p-4">
+          <p className="text-sm text-slate-300">Export</p>
+          <button onClick={() => handleExport("csv")} className="mt-3 premium-button-secondary">
+            <ArrowDownTrayIcon className="h-4 w-4" />
+            Download CSV
+          </button>
         </div>
       </div>
     </div>
   );
-};
-
-export default DataTable;
+}

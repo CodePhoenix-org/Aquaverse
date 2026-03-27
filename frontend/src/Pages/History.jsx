@@ -1,356 +1,333 @@
-import React, { useState } from 'react';
-import { 
-  Search, 
-  Filter, 
-  Calendar, 
-  Clock, 
-  MessageCircle, 
-  BarChart3, 
-  Map, 
-  Eye, 
-  Download, 
-  Star, 
-  MoreVertical,
-  ChevronRight,
+import { useMemo, useState } from "react";
+import {
+  Archive,
   Bot,
-  User,
-  Waves,
-  Thermometer,
-  Droplets,
-  Globe,
-  Database,
-  Trash2,
-  Share,
+  Clock,
   Copy,
-  Archive
-} from 'lucide-react';
-import Navbar from '../components/Navbar';
+  Eye,
+  Map,
+  MessageCircle,
+  Search,
+  Share,
+  Star,
+  Thermometer,
+  Waves,
+  Droplets,
+  BarChart3,
+  Database,
+} from "lucide-react";
+import Navbar from "../components/Navbar";
+import PageShell from "../components/ui/PageShell";
 
-function History() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState('all');
-  const [selectedChat, setSelectedChat] = useState(null);
+const sampleHistory = [
+  {
+    id: 1,
+    title: "Ocean Temperature Analysis",
+    query: "Show me temperature profiles in the Indian Ocean for the last month",
+    response:
+      "I found temperature data from 15 ARGO floats in the Indian Ocean region. The average surface temperature ranges from 28.5 to 30.2 C with consistent warm-pool behavior.",
+    timestamp: "2024-01-15 14:30",
+    date: "Today",
+    type: "temperature",
+    hasVisualization: true,
+    starred: false,
+    tags: ["temperature", "indian ocean", "argo floats"],
+  },
+  {
+    id: 2,
+    title: "Salinity Data Comparison",
+    query: "Compare salinity levels in the Arabian Sea vs Bay of Bengal",
+    response:
+      "Recent ARGO float data shows the Arabian Sea with higher salinity signatures than the Bay of Bengal, especially in near-surface layers.",
+    timestamp: "2024-01-14 09:15",
+    date: "Yesterday",
+    type: "salinity",
+    hasVisualization: true,
+    starred: true,
+    tags: ["salinity", "arabian sea", "bay of bengal", "comparison"],
+  },
+  {
+    id: 3,
+    title: "ARGO Float Trajectories",
+    query: "Display the paths of ARGO floats in the Pacific Ocean",
+    response:
+      "Eight active floats in the Pacific reveal clear circulation traces and several route segments worth following in map view.",
+    timestamp: "2024-01-13 16:45",
+    date: "2 days ago",
+    type: "trajectory",
+    hasVisualization: true,
+    starred: false,
+    tags: ["trajectory", "pacific", "circulation"],
+  },
+  {
+    id: 4,
+    title: "BGC Parameter Analysis",
+    query: "Analyze bio-geochemical parameters in the Southern Ocean",
+    response:
+      "The Southern Ocean BGC data reveals seasonal chlorophyll and nutrient shifts with strong biological variability.",
+    timestamp: "2024-01-12 11:20",
+    date: "3 days ago",
+    type: "bgc",
+    hasVisualization: true,
+    starred: false,
+    tags: ["bgc", "southern ocean", "chlorophyll", "nutrients"],
+  },
+  {
+    id: 5,
+    title: "Deep Water Mass Analysis",
+    query: "What are the characteristics of deep water masses in the Atlantic?",
+    response:
+      "Deep Atlantic water masses show distinct temperature and salinity signatures, with NADW presenting a recognizable profile structure.",
+    timestamp: "2024-01-11 13:10",
+    date: "4 days ago",
+    type: "analysis",
+    hasVisualization: false,
+    starred: true,
+    tags: ["deep water", "atlantic", "nadw"],
+  },
+];
 
-  // Sample chat history data
-  const chatHistory = [
-    {
-      id: 1,
-      title: "Ocean Temperature Analysis",
-      query: "Show me temperature profiles in the Indian Ocean for the last month",
-      response: "I found temperature data from 15 ARGO floats in the Indian Ocean region. The data shows average surface temperatures ranging from 28.5°C to 30.2°C...",
-      timestamp: "2024-01-15 14:30",
-      date: "Today",
-      type: "temperature",
-      hasVisualization: true,
-      visualizationType: "plots",
-      starred: false,
-      tags: ["temperature", "indian ocean", "argo floats"]
-    },
-    {
-      id: 2,
-      title: "Salinity Data Comparison",
-      query: "Compare salinity levels in the Arabian Sea vs Bay of Bengal",
-      response: "Based on recent ARGO float data, the Arabian Sea shows higher salinity levels (36.2-36.8 psu) compared to the Bay of Bengal (33.5-34.2 psu)...",
-      timestamp: "2024-01-14 09:15",
-      date: "Yesterday",
-      type: "salinity",
-      hasVisualization: true,
-      visualizationType: "comparison",
-      starred: true,
-      tags: ["salinity", "arabian sea", "bay of bengal", "comparison"]
-    },
-    {
-      id: 3,
-      title: "ARGO Float Trajectories",
-      query: "Display the paths of ARGO floats in the Pacific Ocean",
-      response: "I've mapped the trajectories of 8 active ARGO floats in the Pacific region. The floats show interesting circulation patterns...",
-      timestamp: "2024-01-13 16:45",
-      date: "2 days ago",
-      type: "trajectory",
-      hasVisualization: true,
-      visualizationType: "map",
-      starred: false,
-      tags: ["trajectory", "pacific", "argo floats", "circulation"]
-    },
-    {
-      id: 4,
-      title: "BGC Parameter Analysis",
-      query: "Analyze bio-geo-chemical parameters in the Southern Ocean",
-      response: "The Southern Ocean BGC data reveals significant seasonal variations in chlorophyll-a concentrations and nutrient levels...",
-      timestamp: "2024-01-12 11:20",
-      date: "3 days ago",
-      type: "bgc",
-      hasVisualization: true,
-      visualizationType: "plots",
-      starred: false,
-      tags: ["bgc", "southern ocean", "chlorophyll", "nutrients"]
-    },
-    {
-      id: 5,
-      title: "Deep Water Mass Analysis",
-      query: "What are the characteristics of deep water masses in the Atlantic?",
-      response: "Deep water masses in the Atlantic show distinct temperature and salinity signatures. North Atlantic Deep Water (NADW) exhibits...",
-      timestamp: "2024-01-11 13:10",
-      date: "4 days ago",
-      type: "analysis",
-      hasVisualization: false,
-      visualizationType: null,
-      starred: true,
-      tags: ["deep water", "atlantic", "nadw", "water masses"]
-    }
-  ];
+const typeIconMap = {
+  temperature: Thermometer,
+  salinity: Droplets,
+  trajectory: Map,
+  bgc: BarChart3,
+  analysis: Database,
+};
 
-  const getTypeIcon = (type) => {
-    switch (type) {
-      case 'temperature': return <Thermometer className="w-4 h-4" />;
-      case 'salinity': return <Droplets className="w-4 h-4" />;
-      case 'trajectory': return <Map className="w-4 h-4" />;
-      case 'bgc': return <BarChart3 className="w-4 h-4" />;
-      default: return <Database className="w-4 h-4" />;
-    }
-  };
+export default function History() {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedFilter, setSelectedFilter] = useState("all");
+  const [selectedChat, setSelectedChat] = useState(sampleHistory[0]);
 
-  const getTypeColor = (type) => {
-    switch (type) {
-      case 'temperature': return 'text-orange-400 bg-orange-500/20';
-      case 'salinity': return 'text-blue-400 bg-blue-500/20';
-      case 'trajectory': return 'text-emerald-400 bg-emerald-500/20';
-      case 'bgc': return 'text-purple-400 bg-purple-500/20';
-      default: return 'text-gray-400 bg-gray-500/20';
-    }
-  };
+  const filteredChats = useMemo(
+    () =>
+      sampleHistory.filter((chat) => {
+        const matchesSearch =
+          chat.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          chat.query.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          chat.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const filteredChats = chatHistory.filter(chat => {
-    const matchesSearch = chat.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         chat.query.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         chat.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-    
-    const matchesFilter = selectedFilter === 'all' || 
-                         (selectedFilter === 'starred' && chat.starred) ||
-                         (selectedFilter === 'visualization' && chat.hasVisualization) ||
-                         chat.type === selectedFilter;
-    
-    return matchesSearch && matchesFilter;
-  });
+        const matchesFilter =
+          selectedFilter === "all" ||
+          (selectedFilter === "starred" && chat.starred) ||
+          (selectedFilter === "visualization" && chat.hasVisualization) ||
+          chat.type === selectedFilter;
+
+        return matchesSearch && matchesFilter;
+      }),
+    [searchQuery, selectedFilter]
+  );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white">
-      {/* Navbar */}
-      <div className="relative z-50 pointer-events-auto">
-        <Navbar onOpenChat={() => {}} />
-      </div>
+    <PageShell>
+      <Navbar />
 
-      {/* Main Content Container */}
-      <div className="max-w-7xl mx-auto px-4 lg:px-6 py-8">
-        {/* Page Header Section */}
-        <div className="mb-8">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-blue-500/20 border border-emerald-500/30 flex items-center justify-center shadow-lg">
-              <Waves className="w-8 h-8 text-emerald-400" />
-            </div>
+      <main className="mx-auto max-w-7xl px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+        <section className="premium-panel premium-panel-strong p-6 sm:p-8">
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-white mb-2">Chat History</h1>
-              <p className="text-lg text-blue-200">Your ARGO ocean data exploration journey</p>
+              <span className="premium-badge">
+                <Waves className="h-3.5 w-3.5" />
+                Conversation Archive
+              </span>
+              <h1 className="mt-5 font-display text-4xl font-bold tracking-[-0.05em] text-white sm:text-5xl">
+                FloatChat history, elevated.
+              </h1>
+              <p className="mt-4 max-w-3xl text-base leading-8 text-slate-300">
+                Review past ocean investigations with a cleaner archive view built for
+                scanning, filtering, and diving back into the right conversation fast.
+              </p>
             </div>
-          </div>
 
-          {/* Search and Filter Bar */}
-          <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 shadow-lg">
-            <div className="flex flex-col lg:flex-row gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search conversations, queries, or tags..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-12 pr-4 py-4 bg-white/10 border border-white/20 rounded-xl focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none placeholder-gray-400 text-white hover:bg-white/15 transition-colors duration-200"
-                />
-              </div>
-              
-              <div className="flex gap-3">
-                <select
-                  value={selectedFilter}
-                  onChange={(e) => setSelectedFilter(e.target.value)}
-                  className="px-6 py-4 bg-white/10 border border-white/20 rounded-xl focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 outline-none text-white hover:bg-white/15 transition-colors duration-200 min-w-[200px]"
-                  style={{ colorScheme: 'dark' }}
-                >
-                  <option value="all" className="bg-slate-800 text-white">All Conversations</option>
-                  <option value="starred" className="bg-slate-800 text-white">⭐ Starred</option>
-                  <option value="visualization" className="bg-slate-800 text-white">📊 With Visualizations</option>
-                  <option value="temperature" className="bg-slate-800 text-white">🌡️ Temperature</option>
-                  <option value="salinity" className="bg-slate-800 text-white">🧂 Salinity</option>
-                  <option value="trajectory" className="bg-slate-800 text-white">🗺️ Trajectories</option>
-                  <option value="bgc" className="bg-slate-800 text-white">🔬 BGC</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Chat List */}
-          <div className="lg:col-span-2">
-            <div className="space-y-6">
-              {filteredChats.map((chat) => (
-                <div
-                  key={chat.id}
-                  onClick={() => setSelectedChat(chat)}
-                  className={`bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 cursor-pointer transition-all duration-300 hover:bg-white/10 hover:border-white/20 hover:shadow-xl hover:shadow-emerald-500/10 group ${
-                    selectedChat?.id === chat.id ? 'bg-white/10 border-emerald-500/50 shadow-lg shadow-emerald-500/20' : ''
-                  }`}
-                >
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${getTypeColor(chat.type)}`}>
-                        {getTypeIcon(chat.type)}
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-lg group-hover:text-emerald-300 transition-colors">
-                          {chat.title}
-                        </h3>
-                        <div className="flex items-center gap-2 text-sm text-gray-400">
-                          <Clock className="w-4 h-4" />
-                          <span>{chat.date} • {chat.timestamp.split(' ')[1]}</span>
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      {chat.starred && (
-                        <Star className="w-5 h-5 text-yellow-400 fill-yellow-400" />
-                      )}
-                      {chat.hasVisualization && (
-                        <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-                          <Eye className="w-4 h-4 text-emerald-400" />
-                        </div>
-                      )}
-                      <button className="p-2 rounded-lg bg-white/10 hover:bg-white/20 opacity-0 group-hover:opacity-100 transition-all">
-                        <MoreVertical className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="mb-4">
-                    <div className="flex items-start gap-3 mb-3">
-                      <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
-                        <User className="w-3 h-3 text-white" />
-                      </div>
-                      <p className="text-sm text-gray-300 leading-relaxed">{chat.query}</p>
-                    </div>
-                    
-                    <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-600 flex items-center justify-center flex-shrink-0">
-                        <Bot className="w-3 h-3 text-white" />
-                      </div>
-                      <p className="text-sm text-gray-300 leading-relaxed line-clamp-2">
-                        {chat.response}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-wrap gap-2">
-                      {chat.tags.slice(0, 3).map((tag, index) => (
-                        <span
-                          key={index}
-                          className="px-2 py-1 text-xs bg-white/10 rounded-lg text-gray-300"
-                        >
-                          #{tag}
-                        </span>
-                      ))}
-                      {chat.tags.length > 3 && (
-                        <span className="px-2 py-1 text-xs bg-white/10 rounded-lg text-gray-300">
-                          +{chat.tags.length - 3} more
-                        </span>
-                      )}
-                    </div>
-                    
-                    <ChevronRight className="w-5 h-5 text-gray-400 group-hover:text-emerald-400 transition-colors" />
-                  </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {[
+                { label: "Conversations", value: sampleHistory.length },
+                { label: "Starred", value: sampleHistory.filter((chat) => chat.starred).length },
+                { label: "With visuals", value: sampleHistory.filter((chat) => chat.hasVisualization).length },
+              ].map((metric) => (
+                <div key={metric.label} className="premium-card p-4">
+                  <p className="text-sm text-slate-300">{metric.label}</p>
+                  <p className="mt-2 font-display text-2xl font-semibold text-white">
+                    {metric.value}
+                  </p>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Chat Details Sidebar */}
-          <div className="lg:col-span-1">
-            {selectedChat ? (
-              <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-6 sticky top-8 shadow-lg">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${getTypeColor(selectedChat.type)}`}>
-                    {getTypeIcon(selectedChat.type)}
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-lg">{selectedChat.title}</h3>
-                    <p className="text-sm text-gray-400">{selectedChat.date}</p>
-                  </div>
+          <div className="mt-8 grid gap-8 lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="space-y-5">
+              <div className="premium-card p-4">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search titles, queries, or tags..."
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    className="premium-input pl-12"
+                  />
                 </div>
 
-                <div className="space-y-4 mb-6">
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-300 mb-2">Your Query</h4>
-                    <div className="bg-white/5 rounded-lg p-3">
-                      <p className="text-sm text-gray-300">{selectedChat.query}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {[
+                    { id: "all", label: "All" },
+                    { id: "starred", label: "Starred" },
+                    { id: "visualization", label: "With visuals" },
+                    { id: "temperature", label: "Temperature" },
+                    { id: "salinity", label: "Salinity" },
+                    { id: "trajectory", label: "Trajectory" },
+                    { id: "bgc", label: "BGC" },
+                  ].map((filter) => (
+                    <button
+                      key={filter.id}
+                      onClick={() => setSelectedFilter(filter.id)}
+                      className={`rounded-full px-4 py-2 text-sm font-semibold transition-all ${
+                        selectedFilter === filter.id
+                          ? "bg-gradient-to-r from-cyan-300 to-sky-400 text-slate-950 shadow-lg"
+                          : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {filteredChats.map((chat) => {
+                  const Icon = typeIconMap[chat.type] || Database;
+                  const active = selectedChat?.id === chat.id;
+
+                  return (
+                    <button
+                      key={chat.id}
+                      onClick={() => setSelectedChat(chat)}
+                      className={`premium-card w-full p-5 text-left ${
+                        active ? "border-cyan-300/20 bg-white/[0.08]" : ""
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-4">
+                          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06]">
+                            <Icon className="h-5 w-5 text-cyan-100" />
+                          </div>
+                          <div>
+                            <h3 className="font-display text-xl font-semibold text-white">
+                              {chat.title}
+                            </h3>
+                            <div className="mt-2 flex items-center gap-2 text-sm text-slate-400">
+                              <Clock className="h-4 w-4" />
+                              {chat.date} at {chat.timestamp.split(" ")[1]}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {chat.starred ? (
+                            <Star className="h-4 w-4 fill-amber-300 text-amber-300" />
+                          ) : null}
+                          {chat.hasVisualization ? (
+                            <span className="premium-chip">
+                              <Eye className="h-3.5 w-3.5" />
+                              Visual
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 space-y-3 text-sm leading-7 text-slate-300">
+                        <p>
+                          <span className="font-semibold text-slate-100">Q:</span> {chat.query}
+                        </p>
+                        <p className="line-clamp-2">
+                          <span className="font-semibold text-slate-100">A:</span> {chat.response}
+                        </p>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {chat.tags.map((tag) => (
+                          <span key={tag} className="premium-chip rounded-full px-3 py-1.5">
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="premium-card h-fit p-6 lg:sticky lg:top-28">
+              {selectedChat ? (
+                <div className="space-y-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="premium-kicker">Selected Conversation</p>
+                      <h2 className="mt-2 font-display text-3xl font-semibold text-white">
+                        {selectedChat.title}
+                      </h2>
+                      <p className="mt-2 text-sm text-slate-400">
+                        {selectedChat.date} at {selectedChat.timestamp.split(" ")[1]}
+                      </p>
+                    </div>
+                    {selectedChat.starred ? (
+                      <Star className="h-5 w-5 fill-amber-300 text-amber-300" />
+                    ) : null}
+                  </div>
+
+                  <div className="premium-divider" />
+
+                  <div className="space-y-4">
+                    <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
+                      <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-200">
+                        <MessageCircle className="h-4 w-4 text-cyan-100" />
+                        Your query
+                      </div>
+                      <p className="text-sm leading-7 text-slate-300">{selectedChat.query}</p>
+                    </div>
+
+                    <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-4">
+                      <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-200">
+                        <Bot className="h-4 w-4 text-cyan-100" />
+                        FloatChat response
+                      </div>
+                      <p className="text-sm leading-7 text-slate-300">{selectedChat.response}</p>
                     </div>
                   </div>
 
                   <div>
-                    <h4 className="text-sm font-medium text-gray-300 mb-2">AI Response</h4>
-                    <div className="bg-white/5 rounded-lg p-3">
-                      <p className="text-sm text-gray-300">{selectedChat.response}</p>
+                    <p className="text-sm font-medium text-slate-200">Tags</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedChat.tags.map((tag) => (
+                        <span key={tag} className="premium-chip rounded-full px-3 py-1.5">
+                          #{tag}
+                        </span>
+                      ))}
                     </div>
                   </div>
-                </div>
 
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-gray-300">Tags</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedChat.tags.map((tag, index) => (
-                      <span
-                        key={index}
-                        className="px-3 py-1 text-xs bg-emerald-500/20 text-emerald-300 rounded-lg"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-6 border-t border-white/10">
-                  <div className="flex gap-2">
-                    <button className="flex-1 px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 rounded-lg transition-colors flex items-center justify-center gap-2">
-                      <Share className="w-4 h-4" />
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <button className="premium-button-secondary">
+                      <Share className="h-4 w-4" />
                       Share
                     </button>
-                    <button className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">
-                      <Copy className="w-4 h-4" />
+                    <button className="premium-button-secondary">
+                      <Copy className="h-4 w-4" />
+                      Copy
                     </button>
-                    <button className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors">
-                      <Archive className="w-4 h-4" />
+                    <button className="premium-button-secondary">
+                      <Archive className="h-4 w-4" />
+                      Archive
                     </button>
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-8 text-center shadow-lg">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-blue-500/30 flex items-center justify-center mx-auto mb-6">
-                  <MessageCircle className="w-8 h-8 text-blue-400" />
-                </div>
-                <h3 className="font-semibold text-xl mb-3 text-white">Select a Conversation</h3>
-                <p className="text-gray-300 leading-relaxed">
-                  Choose a chat from the list to view details, insights, and conversation history
-                </p>
-              </div>
-            )}
+              ) : null}
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
+        </section>
+      </main>
+    </PageShell>
   );
 }
-
-export default History;
-
-

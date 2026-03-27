@@ -1,454 +1,397 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useLocation } from 'react-router-dom';
+import { useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
+import {
+  Activity,
+  ArrowRight,
+  BarChart3,
+  Database,
+  Eye,
+  FileText,
+  GitCompare,
+  Globe,
+  Map,
+  MessageCircle,
+  Table,
+  Thermometer,
+  Waves,
+  X,
+} from "lucide-react";
 import { transformApiData } from "../utils/dataTransformers";
 import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
 import ChatInterface from "./chat/ChatInterface";
 import FloatMap from "./maps/FloatMap";
-import ArgoGlobe from "./maps/ArgoGlobe";
 import DataPlots from "./plots/DataPlots";
 import ProfileComparison from "./plots/ProfileComparison";
 import DataTable from "./dashboard/DataTable";
 import ErrorBoundary from "./ErrorBoundary";
-import { 
-  Activity, 
-  Globe, 
-  BarChart3, 
-  Thermometer,
-  Map,
-  BarChart,
-  GitCompare,
-  Table,
-  Eye,
-  Download,
-  FileText,
-  Database,
-  X
-} from "lucide-react";
+import PageShell from "./ui/PageShell";
 
-const Dashboard = () => {
+const viewOptions = [
+  { id: "overview", label: "Overview", icon: Eye },
+  { id: "map", label: "Map View", icon: Map },
+  { id: "plots", label: "Data Plots", icon: BarChart3 },
+  { id: "comparison", label: "Comparison", icon: GitCompare },
+  { id: "table", label: "Data Table", icon: Table },
+];
+
+function DashboardPanel({ icon: Icon, title, description, children, className = "" }) {
+  return (
+    <section className={`premium-panel overflow-hidden p-5 sm:p-6 ${className}`}>
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06]">
+              <Icon className="h-5 w-5 text-cyan-100" />
+            </div>
+            <h3 className="font-display text-xl font-semibold text-white">{title}</h3>
+          </div>
+          {description ? (
+            <p className="mt-2 text-sm leading-6 text-slate-300">{description}</p>
+          ) : null}
+        </div>
+      </div>
+      <div>{children}</div>
+    </section>
+  );
+}
+
+export default function Dashboard() {
   const location = useLocation();
-
   const [isChatOpen, setIsChatOpen] = useState(false);
-  // If navigation state has vizTab, use it as initial tab, else 'overview'
-  const [activeView, setActiveView] = useState(location.state?.vizTab || 'overview');
-  // If navigation state has vizData, use it as initial data, else null
+  const [activeView, setActiveView] = useState(location.state?.vizTab || "overview");
   const [chatData, setChatData] = useState(location.state?.vizData || null);
-  useEffect(() => {
-    // If navigation state changes (e.g., user comes from FloatChat), update state
-    if (location.state?.vizData) setChatData(location.state.vizData);
-    if (location.state?.vizTab) setActiveView(location.state.vizTab);
-    // eslint-disable-next-line
-  }, [location.state]);
-  useEffect(() => {
-    console.log('=== CHAT DATA DEBUGGING ===');
-    console.log('Raw chat data received:', chatData);
-    console.log('Type of chat data:', typeof chatData);
-    
-    if (chatData && typeof chatData === 'object') {
-        console.log('Chat data keys:', Object.keys(chatData));
-        console.log('Chat data stringified:', JSON.stringify(chatData, null, 2));
-    }
-  }, [chatData]);
 
-  // Transform received data
+  useEffect(() => {
+    if (location.state?.vizData) {
+      setChatData(location.state.vizData);
+    }
+    if (location.state?.vizTab) {
+      setActiveView(location.state.vizTab);
+    }
+  }, [location.state]);
+
   const transformedData = useMemo(() => {
     if (!chatData) return null;
     return transformApiData(chatData);
   }, [chatData]);
 
-  // Handle data received from chat
-  const handleDataReceived = (data) => {
-    console.log('Raw data received:', data);
-    setChatData(data);
-    // Auto-switch view based on data type
-    if (data && data.type) {
-      if (data.type.includes('profile')) {
-        setActiveView('plots');
-      } else if (data.type.includes('map')) {
-        setActiveView('map');
-      }
-    }
-  };
-
-  // Enhanced auto-switch view based on data type
   useEffect(() => {
     if (!transformedData) return;
 
-    console.log('Auto-switch analyzing data:', transformedData);
-    
-    if (transformedData.type?.includes('profile')) {
-        // Check if we have multiple parameters
-        if (transformedData.available_params && transformedData.available_params.length > 1) {
-            setActiveView('plots'); // Use plots view which can handle multiple parameters
-            console.log('Multiple parameters detected, using plots view');
-        } else {
-            setActiveView('plots');
-            console.log('Single parameter detected, using plots view');
-        }
-    } else if (transformedData.floats) {
-        setActiveView('map');
-        console.log('Map data detected, using map view');
+    if (transformedData.type?.includes("profile")) {
+      setActiveView("plots");
+      return;
+    }
+
+    if (transformedData.floats) {
+      setActiveView("map");
     }
   }, [transformedData]);
 
-  useEffect(() => {
-    console.log('=== TRANSFORMED DATA DEBUGGING ===');
-    console.log('Transformed data:', transformedData);
-    console.log('Type of transformed data:', typeof transformedData);
-    
-    if (transformedData && typeof transformedData === 'object') {
-        console.log('Transformed data keys:', Object.keys(transformedData));
-        if (transformedData.profiles) {
-            console.log('Profiles available:', Object.keys(transformedData.profiles));
-            Object.keys(transformedData.profiles).forEach(param => {
-                const profile = transformedData.profiles[param];
-                console.log(`Profile ${param}:`, {
-                    hasDepths: Array.isArray(profile.depths),
-                    depthsLength: Array.isArray(profile.depths) ? profile.depths.length : 'N/A',
-                    hasValues: Array.isArray(profile.values),
-                    valuesLength: Array.isArray(profile.values) ? profile.values.length : 'N/A',
-                    sampleDepths: Array.isArray(profile.depths) ? profile.depths.slice(0, 5) : 'N/A',
-                    sampleValues: Array.isArray(profile.values) ? profile.values.slice(0, 5) : 'N/A'
-                });
-            });
-        }
+  const handleDataReceived = (data) => {
+    setChatData(data);
+
+    if (data?.type?.includes("profile")) {
+      setActiveView("plots");
+    } else if (data?.type?.includes("map")) {
+      setActiveView("map");
     }
-  }, [transformedData]);
+  };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white">
-      <div className="relative z-50 pointer-events-auto">
-        <Navbar onOpenChat={() => setIsChatOpen(true)} />
-      </div>
+  const metrics = [
+    {
+      title: "Active Floats",
+      value: "3,847",
+      sub: "Tracking across major basins",
+      icon: Activity,
+    },
+    {
+      title: "Global Coverage",
+      value: "78%",
+      sub: "Cross-ocean visibility",
+      icon: Globe,
+    },
+    {
+      title: "Profiles Today",
+      value: "1,234",
+      sub: "Fresh observational profiles",
+      icon: BarChart3,
+    },
+    {
+      title: "Temperature Range",
+      value: "2.1C - 25.2C",
+      sub: "Current working dataset",
+      icon: Thermometer,
+    },
+  ];
 
-      <div className="w-full mx-auto px-2 md:px-8 py-6 grid grid-cols-1 lg:grid-cols-[18rem_1fr] gap-8 relative z-10">
-        <Sidebar onApply={() => {}} />
-
-        <main className="space-y-8">
-          {/* KPI Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
-            {[
-              { 
-                title: "Active Floats", 
-                value: "3,847", 
-                sub: "+12 today",
-                icon: Activity,
-                gradient: "from-emerald-500/20 to-emerald-600/30",
-                iconColor: "text-emerald-400",
-                valueColor: "text-emerald-300"
-              },
-              { 
-                title: "Global Coverage", 
-                value: "78%", 
-                sub: "All oceans",
-                icon: Globe,
-                gradient: "from-blue-500/20 to-blue-600/30",
-                iconColor: "text-blue-400",
-                valueColor: "text-blue-300"
-              },
-              { 
-                title: "Profiles Today", 
-                value: "1,234", 
-                sub: "+156 vs yesterday",
-                icon: BarChart3,
-                gradient: "from-purple-500/20 to-purple-600/30",
-                iconColor: "text-purple-400",
-                valueColor: "text-purple-300"
-              },
-              { 
-                title: "Temperature Range", 
-                value: "2.1°C - 25.2°C", 
-                sub: "Current dataset",
-                icon: Thermometer,
-                gradient: "from-orange-500/20 to-orange-600/30",
-                iconColor: "text-orange-400",
-                valueColor: "text-orange-300"
-              }
-            ].map((c, i) => {
-              const IconComponent = c.icon;
-              return (
-                <div 
-                  key={i} 
-                  className={`bg-gradient-to-br ${c.gradient} rounded-2xl p-6 backdrop-blur-md ring-1 ring-white/10 shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all duration-300 group relative overflow-hidden`}
-                >
-                  {/* Subtle animated background pattern */}
-                  <div className="absolute inset-0 opacity-5 group-hover:opacity-10 transition-opacity duration-300">
-                    <div className="absolute top-0 right-0 w-20 h-20 bg-white rounded-full -translate-y-10 translate-x-10"></div>
-                    <div className="absolute bottom-0 left-0 w-16 h-16 bg-white rounded-full translate-y-8 -translate-x-8"></div>
-                  </div>
-                  
-                  <div className="relative z-10">
-                    <div className="flex items-center justify-between mb-3">
-                      <IconComponent className={`w-6 h-6 ${c.iconColor} group-hover:scale-110 transition-transform duration-300`} />
-                      <div className="w-2 h-2 bg-white/20 rounded-full group-hover:bg-white/40 transition-colors duration-300"></div>
-                    </div>
-                    
-                    <p className="text-sm text-blue-200 font-medium mb-2">{c.title}</p>
-                    <p className={`text-3xl font-bold mb-1 ${c.valueColor} group-hover:scale-105 transition-transform duration-300`}>
-                      {c.value}
-                    </p>
-                    <p className="text-xs text-purple-200 opacity-80">{c.sub}</p>
-                  </div>
-              </div>
-              );
-            })}
-          </div>
-
-          {/* Views Toolbar */}
-          <div className="flex flex-wrap gap-3 sticky top-4 z-10 bg-slate-950/80 backdrop-blur-md py-4 -mx-2 px-2 rounded-lg border border-white/5">
-            {[
-              {id:'overview', label:'Overview', icon: Eye},
-              {id:'map', label:'Map View', icon: Map},
-              {id:'plots', label:'Data Plots', icon: BarChart},
-              {id:'comparison', label:'Profile Comparison', icon: GitCompare},
-              {id:'table', label:'Data Table', icon: Table}
-            ].map(btn => {
-              const IconComponent = btn.icon;
-              return (
-              <button
-                key={btn.id}
-                onClick={()=>setActiveView(btn.id)}
-                  className={`px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 flex items-center gap-2 group ${
-                    activeView === btn.id 
-                      ? 'bg-gradient-to-r from-emerald-500 to-fuchsia-500 text-white shadow-lg shadow-emerald-500/25 scale-105' 
-                      : 'bg-white/10 hover:bg-white/20 ring-1 ring-white/10 hover:ring-white/20 hover:scale-105'
-                  }`}
-                >
-                  <IconComponent className={`w-4 h-4 transition-transform duration-300 ${
-                    activeView === btn.id ? 'scale-110' : 'group-hover:scale-110'
-                  }`} />
-                  <span>{btn.label}</span>
-                  {activeView === btn.id && (
-                    <div className="w-1 h-1 bg-white rounded-full animate-pulse"></div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Views Content */}
-
-
-
-          {activeView === 'overview' && (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-              <section className="relative z-0 bg-gradient-to-br from-white/10 to-white/5 rounded-2xl p-6 overflow-hidden ring-1 ring-white/10 shadow-lg hover:shadow-xl transition-all duration-300 group">
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <div className="relative z-10">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Map className="w-5 h-5 text-emerald-400" />
-                    <h3 className="text-lg font-semibold text-white">Global Float Map</h3>
-                  </div>
-                <ErrorBoundary>
-                  <FloatMap key={`overview-${activeView}`} data={transformedData} />
-                </ErrorBoundary>
-                </div>
-              </section>
-              <section className="bg-gradient-to-br from-white/10 to-white/5 rounded-2xl p-6 overflow-hidden ring-1 ring-white/10 shadow-lg hover:shadow-xl transition-all duration-300 group">
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <div className="relative z-10">
-                  <div className="flex items-center gap-2 mb-4">
-                    <BarChart className="w-5 h-5 text-blue-400" />
-                    <h3 className="text-lg font-semibold text-white">Data Visualization</h3>
-                  </div>
-                <ErrorBoundary>
-                  <DataPlots data={transformedData} />
-                </ErrorBoundary>
-                </div>
-              </section>
-            </div>
-          )}
-
-
-
-          {activeView === 'map' && (
-            <section className="relative z-0 bg-gradient-to-br from-white/10 to-white/5 rounded-2xl p-6 overflow-hidden ring-1 ring-white/10 shadow-lg hover:shadow-xl transition-all duration-300 group" style={{minHeight:'600px', height:'600px'}}>
-              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <div className="relative z-10 h-full w-full">
-                <div className="flex items-center gap-2 mb-4">
-                  <Map className="w-5 h-5 text-emerald-400" />
-                  <h3 className="text-lg font-semibold text-white">Interactive Float Map</h3>
-                </div>
-                <div className="h-[calc(100%-3rem)] w-full">
-                <ErrorBoundary>
-                  <FloatMap key={`map-${activeView}`} data={transformedData} />
-                </ErrorBoundary>
-                </div>
-              </div>
-            </section>
-          )}
-
-
-
-          {activeView === 'plots' && (
-            <section className="bg-gradient-to-br from-white/10 to-white/5 rounded-2xl p-6 overflow-hidden ring-1 ring-white/10 shadow-lg hover:shadow-xl transition-all duration-300 group" style={{minHeight:'620px'}}>
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-2 mb-4">
-                  <BarChart className="w-5 h-5 text-blue-400" />
-                  <h3 className="text-lg font-semibold text-white">Data Analysis Plots</h3>
-                </div>
+  const renderCurrentView = () => {
+    switch (activeView) {
+      case "map":
+        return (
+          <DashboardPanel
+            icon={Map}
+            title="Interactive Float Map"
+            description="Track float positions and trajectories within a calmer premium surface."
+          >
+            <ErrorBoundary>
+              <FloatMap data={transformedData} />
+            </ErrorBoundary>
+          </DashboardPanel>
+        );
+      case "plots":
+        return (
+          <DashboardPanel
+            icon={BarChart3}
+            title="Ocean Data Visualizations"
+            description="Inspect depth profiles, 3D structures, and analysis-ready chart views."
+          >
+            <ErrorBoundary>
+              <DataPlots data={transformedData} />
+            </ErrorBoundary>
+          </DashboardPanel>
+        );
+      case "comparison":
+        return (
+          <DashboardPanel
+            icon={GitCompare}
+            title="Profile Comparison"
+            description="Compare regions, periods, and parameter shapes without leaving the workspace."
+          >
+            <ErrorBoundary>
+              <ProfileComparison data={transformedData} />
+            </ErrorBoundary>
+          </DashboardPanel>
+        );
+      case "table":
+        return (
+          <DashboardPanel
+            icon={Table}
+            title="Measurement Table"
+            description="Review structured rows, filter detail, and export a cleaner subset."
+          >
+            <ErrorBoundary>
+              <DataTable data={transformedData} />
+            </ErrorBoundary>
+          </DashboardPanel>
+        );
+      default:
+        return (
+          <div className="grid gap-6 xl:grid-cols-2">
+            <DashboardPanel
+              icon={Map}
+              title="Spatial Overview"
+              description="A premium geographic surface for float locations and drift patterns."
+            >
+              <ErrorBoundary>
+                <FloatMap data={transformedData} />
+              </ErrorBoundary>
+            </DashboardPanel>
+            <DashboardPanel
+              icon={BarChart3}
+              title="Signal Overview"
+              description="Profile and chart context for the latest transformed ocean query."
+            >
               <ErrorBoundary>
                 <DataPlots data={transformedData} />
               </ErrorBoundary>
-              </div>
-            </section>
-          )}
+            </DashboardPanel>
+          </div>
+        );
+    }
+  };
 
+  return (
+    <PageShell>
+      <Navbar onOpenChat={() => setIsChatOpen(true)} />
 
+      <main className="mx-auto w-full max-w-[1400px] px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+        <div className="grid gap-6 xl:grid-cols-[20rem_1fr]">
+          <Sidebar onApply={() => {}} />
 
-          {activeView === 'comparison' && (
-            <section className="bg-gradient-to-br from-white/10 to-white/5 rounded-2xl p-6 overflow-hidden ring-1 ring-white/10 shadow-lg hover:shadow-xl transition-all duration-300 group" style={{minHeight:'620px'}}>
-              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-2 mb-4">
-                  <GitCompare className="w-5 h-5 text-purple-400" />
-                  <h3 className="text-lg font-semibold text-white">Profile Comparison</h3>
+          <div className="space-y-6">
+            <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+              <div className="premium-panel premium-panel-strong relative overflow-hidden p-6 sm:p-8">
+                <div className="absolute inset-x-12 top-0 h-40 rounded-full bg-cyan-300/12 blur-3xl" />
+                <div className="relative">
+                  <span className="premium-badge">
+                    <Waves className="h-3.5 w-3.5" />
+                    Workspace Overview
+                  </span>
+                  <h1 className="mt-5 font-display text-4xl font-bold tracking-[-0.05em] text-white sm:text-5xl">
+                    Ocean intelligence, now presented like a premium command deck.
+                  </h1>
+                  <p className="mt-5 max-w-2xl text-base leading-8 text-slate-300">
+                    FloatChat can send fresh data directly into this dashboard. Review
+                    the signal through maps, plots, comparisons, and tables while the
+                    upgraded interface keeps context and hierarchy clean.
+                  </p>
+
+                  <div className="mt-8 flex flex-wrap gap-3">
+                    <button
+                      onClick={() => setIsChatOpen(true)}
+                      className="premium-button"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      Launch FloatChat
+                    </button>
+                    <button
+                      onClick={() => setActiveView("map")}
+                      className="premium-button-secondary"
+                    >
+                      Open Map View
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="mt-8 grid gap-4 sm:grid-cols-3">
+                    {[
+                      transformedData
+                        ? { label: "Data status", value: "Ready" }
+                        : { label: "Data status", value: "Waiting" },
+                      { label: "Current view", value: activeView },
+                      { label: "Assistant", value: "Connected" },
+                    ].map((item) => (
+                      <div key={item.label} className="premium-card px-4 py-4">
+                        <p className="text-sm text-slate-300">{item.label}</p>
+                        <p className="mt-2 font-display text-2xl font-semibold text-white capitalize">
+                          {item.value}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              <ErrorBoundary>
-                <ProfileComparison data={transformedData} />
-              </ErrorBoundary>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                {metrics.map((metric) => {
+                  const Icon = metric.icon;
+
+                  return (
+                    <div key={metric.title} className="premium-card p-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06]">
+                          <Icon className="h-5 w-5 text-cyan-100" />
+                        </div>
+                        <span className="premium-chip">Live</span>
+                      </div>
+                      <p className="mt-4 text-sm text-slate-300">{metric.title}</p>
+                      <p className="mt-2 font-display text-3xl font-bold text-white">
+                        {metric.value}
+                      </p>
+                      <p className="mt-2 text-sm text-slate-400">{metric.sub}</p>
+                    </div>
+                  );
+                })}
               </div>
             </section>
-          )}
 
+            <section className="premium-panel sticky top-24 p-3">
+              <div className="flex flex-wrap gap-3">
+                {viewOptions.map((option) => {
+                  const Icon = option.icon;
+                  const active = activeView === option.id;
 
-
-          {activeView === 'table' && (
-            <section className="bg-gradient-to-br from-white/10 to-white/5 rounded-2xl p-6 overflow-hidden ring-1 ring-white/10 shadow-lg hover:shadow-xl transition-all duration-300 group" style={{minHeight:'620px'}}>
-              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-2 mb-4">
-                  <Table className="w-5 h-5 text-orange-400" />
-                  <h3 className="text-lg font-semibold text-white">Data Table</h3>
-                </div>
-              <ErrorBoundary>
-                <DataTable data={transformedData} />
-              </ErrorBoundary>
+                  return (
+                    <button
+                      key={option.id}
+                      onClick={() => setActiveView(option.id)}
+                      className={`inline-flex items-center gap-2 rounded-full px-4 py-3 text-sm font-semibold transition-all ${
+                        active
+                          ? "bg-gradient-to-r from-cyan-300 to-sky-400 text-slate-950 shadow-lg"
+                          : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {option.label}
+                    </button>
+                  );
+                })}
               </div>
             </section>
-          )}
 
-          <section className="bg-gradient-to-br from-white/10 to-white/5 border border-white/20 rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all duration-300 group">
-            <div className="flex items-center gap-2 mb-6">
-              <Database className="w-5 h-5 text-cyan-400" />
-              <h3 className="text-lg font-semibold text-white">Recent Profiles</h3>
-              <div className="ml-auto flex items-center gap-2">
-                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
-                <span className="text-xs text-emerald-300">Live Data</span>
-              </div>
-            </div>
-            
-            <div className="overflow-x-auto scrollbar-thin">
-              <table className="min-w-full text-sm">
-                <thead className="text-blue-200">
-                  <tr className="border-b border-white/10">
-                    <th className="text-left px-4 py-3 font-medium">Profile ID</th>
-                    <th className="text-left px-4 py-3 font-medium">Float</th>
-                    <th className="text-left px-4 py-3 font-medium">Region</th>
-                    <th className="text-left px-4 py-3 font-medium">Date</th>
-                    <th className="text-left px-4 py-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5">
-                  {[1,2,3,4,5].map((id)=> (
-                    <tr key={id} className="hover:bg-white/5 transition-colors duration-200 group/row">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-emerald-400 rounded-full"></div>
-                          <span className="font-mono text-emerald-300">PRF{id}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-white">Float {1240 + id}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-blue-200">North Atlantic</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-purple-200">2024-06-0{id}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-2">
-                          <button className="px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-xs text-emerald-300 border border-emerald-500/30 hover:border-emerald-500/50 transition-all duration-200 flex items-center gap-1">
-                            <FileText className="w-3 h-3" />
-                            CSV
-                          </button>
-                          <button className="px-3 py-1 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-xs text-blue-300 border border-blue-500/30 hover:border-blue-500/50 transition-all duration-200 flex items-center gap-1">
-                            <Database className="w-3 h-3" />
-                            NetCDF
-                          </button>
-                          <button className="px-3 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-xs text-purple-300 border border-purple-500/30 hover:border-purple-500/50 transition-all duration-200 flex items-center gap-1">
-                            <Download className="w-3 h-3" />
-                            ASCII
-                          </button>
-                        </div>
-                      </td>
+            {renderCurrentView()}
+
+            <DashboardPanel
+              icon={Database}
+              title="Recent Profiles"
+              description="A premium activity strip for high-value records and export actions."
+            >
+              <div className="overflow-x-auto scrollbar-thin">
+                <table className="min-w-full text-left text-sm text-slate-200">
+                  <thead className="border-b border-white/10 text-slate-400">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Profile ID</th>
+                      <th className="px-4 py-3 font-medium">Float</th>
+                      <th className="px-4 py-3 font-medium">Region</th>
+                      <th className="px-4 py-3 font-medium">Date</th>
+                      <th className="px-4 py-3 font-medium">Action</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            
-            <div className="mt-4 pt-4 border-t border-white/10">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-blue-200">Showing 5 of 1,234 profiles</span>
-                <button className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500/20 to-blue-500/20 hover:from-emerald-500/30 hover:to-blue-500/30 text-sm text-white border border-white/20 hover:border-white/30 transition-all duration-200">
-                  View All Profiles
-                </button>
+                  </thead>
+                  <tbody className="divide-y divide-white/[0.06]">
+                    {[1, 2, 3, 4, 5].map((id) => (
+                      <tr key={id} className="transition-colors hover:bg-white/[0.03]">
+                        <td className="px-4 py-4 font-medium text-cyan-100">PRF{id}</td>
+                        <td className="px-4 py-4">Float {1240 + id}</td>
+                        <td className="px-4 py-4 text-slate-300">North Atlantic</td>
+                        <td className="px-4 py-4 text-slate-400">2024-06-0{id}</td>
+                        <td className="px-4 py-4">
+                          <button className="premium-button-secondary rounded-full px-4 py-2 text-xs">
+                            <FileText className="h-3.5 w-3.5" />
+                            Export
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            </div>
-          </section>
-        </main>
-      </div>
+            </DashboardPanel>
+          </div>
+        </div>
+      </main>
 
-      {/* Floating Chat Widget */}
       <button
         onClick={() => setIsChatOpen(true)}
-        className="fixed bottom-6 right-6 w-16 h-16 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 shadow-2xl border border-white/20 flex items-center justify-center hover:scale-110 hover:shadow-cyan-500/25 transition-all duration-300 group z-50"
-        aria-label="Open Chat"
+        className="fixed bottom-6 right-6 z-40 flex h-16 w-16 items-center justify-center rounded-full border border-cyan-200/20 bg-gradient-to-br from-cyan-300 to-sky-500 text-slate-950 shadow-[0_28px_55px_rgba(14,165,233,0.38)] transition-transform hover:scale-105"
+        aria-label="Open chat"
       >
-        <div className="relative">
-          <div className="text-2xl group-hover:scale-110 transition-transform duration-300">💬</div>
-          <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-400 rounded-full animate-pulse border-2 border-white"></div>
-        </div>
+        <MessageCircle className="h-6 w-6" />
       </button>
 
-      {/* Chat Modal (uses your ChatInterface and returns data) */}
-      {isChatOpen && (
-        <div className="fixed inset-0 z-[9999] animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsChatOpen(false)} />
-          <div className="absolute inset-x-2 md:inset-x-auto md:right-8 top-8 bottom-8 md:w-[880px] bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-emerald-600 to-purple-600 text-white">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                  <span className="text-lg">🤖</span>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-lg">FloatChat Assistant</h4>
-                  <p className="text-xs text-emerald-100 flex items-center gap-1">
-                    <div className="w-2 h-2 bg-emerald-300 rounded-full animate-pulse"></div>
-                    AI Powered Ocean Data Discovery
-                  </p>
-                </div>
+      {isChatOpen ? (
+        <div className="fixed inset-0 z-[999]">
+          <button
+            className="absolute inset-0 bg-slate-950/75 backdrop-blur-sm"
+            onClick={() => setIsChatOpen(false)}
+            aria-label="Close chat overlay"
+          />
+          <div className="absolute inset-x-4 bottom-4 top-4 mx-auto flex max-w-5xl flex-col overflow-hidden rounded-[30px] border border-white/[0.12] bg-[linear-gradient(180deg,rgba(4,15,28,0.96),rgba(7,24,42,0.96))] shadow-[0_45px_120px_rgba(0,10,25,0.62)]">
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+              <div>
+                <p className="premium-kicker">FloatChat Overlay</p>
+                <h3 className="mt-1 font-display text-2xl font-semibold text-white">
+                  Ask, route, and visualize
+                </h3>
               </div>
-              <button 
-                onClick={() => setIsChatOpen(false)} 
-                className="p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-all duration-200 hover:scale-105 group"
-                title="Close chat"
+              <button
+                onClick={() => setIsChatOpen(false)}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white"
+                aria-label="Close chat"
               >
-                <X className="w-5 h-5 text-white group-hover:text-red-200 transition-colors duration-200" />
+                <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex-1 overflow-hidden">
-              <ChatInterface onDataReceived={handleDataReceived} onCloseChat={() => setIsChatOpen(false)} />
+            <div className="min-h-0 flex-1">
+              <ChatInterface
+                onDataReceived={handleDataReceived}
+                onCloseChat={() => setIsChatOpen(false)}
+              />
             </div>
           </div>
         </div>
-      )}
-    </div>
+      ) : null}
+    </PageShell>
   );
-};
-
-export default Dashboard;
+}

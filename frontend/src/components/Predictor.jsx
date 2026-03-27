@@ -1,201 +1,52 @@
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/Authcontext';
-import { 
-  AlertTriangle, 
-  ThermometerSun, 
-  Droplets, 
-  Leaf, 
-  MapPin, 
-  Zap, 
-  BarChart3, 
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/Authcontext";
+import {
   AlertCircle,
-  X,
-  Zap as ZapIcon,
+  AlertTriangle,
+  BarChart3,
+  Compass,
+  Droplets,
+  HeartPulse,
+  LifeBuoy,
+  MapPin,
   Menu,
-  Moon,
-  Sun,
-  MessageCircle
-} from 'lucide-react';
+  MessageCircle,
+  ShieldAlert,
+  Sparkles,
+  ThermometerSun,
+  Waves,
+  X,
+  Zap,
+} from "lucide-react";
+import PageShell from "./ui/PageShell";
+import BrandMark from "./ui/BrandMark";
 
-// Inject custom scrollbar styles globally
-if (typeof window !== 'undefined') {
-  const styleId = 'disaster-predictor-scrollbar-style';
-  if (!document.getElementById(styleId)) {
-    const style = document.createElement('style');
-    style.id = styleId;
-    style.innerHTML = `
-      .custom-scrollbar::-webkit-scrollbar { width: 8px; border-radius: 8px; }
-      .custom-scrollbar::-webkit-scrollbar-thumb { background: #374151; border-radius: 8px; }
-      .custom-scrollbar.light::-webkit-scrollbar-thumb { background: #e5e7eb; }
-      .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-      
-      @media (max-width: 768px) {
-        .sidebar-enter { transform: translateX(0); }
-        .sidebar-leave { transform: translateX(-100%); }
-      }
-    `;
-    document.head.appendChild(style);
-  }
+function ResultCard({ title, badge, children, icon: Icon }) {
+  return (
+    <div className="premium-panel p-5 sm:p-6">
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06]">
+            <Icon className="h-5 w-5 text-cyan-100" />
+          </div>
+          <h2 className="font-display text-2xl font-semibold text-white">{title}</h2>
+        </div>
+        {badge ? (
+          <span className="rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-200">
+            {badge}
+          </span>
+        ) : null}
+      </div>
+      {children}
+    </div>
+  );
 }
 
-// Render risk card
-const renderRiskCard = (data, risk, themeClasses, error) => {
-  console.log('renderRiskCard called with:', { data, risk, error });
-  return (
-    <div className={`p-4 sm:p-6 rounded-2xl ${themeClasses.border} border ${risk ? (risk.level === 'High' ? 'bg-red-500/10 border-red-500/20' : 'bg-green-500/10 border-green-500/20') : `${themeClasses.cardBg}`}`}>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
-        <h2 className={`text-xl sm:text-2xl font-bold ${themeClasses.text}`}>Disaster Risk Assessment</h2>
-        {risk && (
-          <div className={`px-3 py-1 rounded-full text-sm font-semibold w-fit ${risk.level === 'High' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
-            {risk.level} Risk
-          </div>
-        )}
-      </div>
-      {error ? (
-        <div className="flex items-center justify-center p-4 bg-red-500/10 rounded-lg">
-          <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
-          <p className={`${themeClasses.textMuted} text-sm`}>{error}</p>
-        </div>
-      ) : data && risk ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-            <div className="text-center p-3 rounded-lg bg-white/10 col-span-2 md:col-span-1">
-              <div className="text-xl sm:text-2xl font-bold text-blue-400">{risk.probability}%</div>
-              <div className={`${themeClasses.textMuted} text-xs sm:text-sm`}>Prediction Confidence</div>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-white/10">
-              <ThermometerSun className="w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-2 text-orange-400" />
-              <div className={`${themeClasses.text} font-medium text-sm`}>Temperature: {data.temperature.toFixed(1)}°C</div>
-              <div className={`${themeClasses.textMuted} text-xs`}>Ocean temperature</div>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-white/10">
-              <Droplets className="w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-2 text-blue-400" />
-              <div className={`${themeClasses.text} font-medium text-sm`}>Salinity: {data.salinity.toFixed(1)} PSU</div>
-              <div className={`${themeClasses.textMuted} text-xs`}>Ocean salinity</div>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-white/10">
-              <Leaf className="w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-2 text-green-400" />
-              <div className={`${themeClasses.text} font-medium text-sm`}>Chl-a: {data.chlorophyll.toFixed(2)} mg/m³</div>
-              <div className={`${themeClasses.textMuted} text-xs`}>Chlorophyll-a</div>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-            <div>
-              <h3 className={`font-semibold mb-2 flex items-center ${themeClasses.text} text-sm sm:text-base`}>
-                <MapPin className="w-4 h-4 sm:w-5 sm:h-5 mr-2 flex-shrink-0" /> Location
-              </h3>
-              <div className={`${themeClasses.textMuted} text-sm`}>Lat: {data.latitude.toFixed(1)}°N, Lon: {data.longitude.toFixed(1)}°E</div>
-            </div>
-            <div>
-              <h3 className={`font-semibold mb-2 flex items-center ${themeClasses.text} text-sm sm:text-base`}>
-                <Zap className="w-4 h-4 sm:w-5 sm:h-5 mr-2 flex-shrink-0" /> Oxygen & Depth
-              </h3>
-              <div className={`${themeClasses.textMuted} text-sm`}>Oxygen: {data.oxygen.toFixed(1)} µmol/kg, Depth: {data.depth.toFixed(0)} m</div>
-            </div>
-          </div>
-          <div className="mt-6 p-3 sm:p-4 rounded-lg bg-white/5">
-            <p className={`${themeClasses.textSecondary} text-xs sm:text-sm leading-relaxed`}>
-              Based on ARGO float data, this assessment uses a machine learning model to predict potential oceanic disasters. High risk indicates conditions favorable for anomalies such as extreme weather events.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <p className={`${themeClasses.textMuted} text-center py-8 text-sm sm:text-base`}>Enter ocean data to assess disaster risk.</p>
-      )}
-    </div>
-  );
-};
-
-// Render survival card (mock)
-const renderSurvivalCard = (data, survival, themeClasses, error) => {
-  console.log('renderSurvivalCard called with:', { data, survival, error });
-  let bgClass = `${themeClasses.cardBg}`;
-  let borderClass = themeClasses.border;
-  let badgeBg = 'bg-gray-500';
-  if (survival) {
-    const level = survival.level.split(' ')[0];
-    if (level === 'High') {
-      bgClass = 'bg-green-500/10 border-green-500/20';
-      badgeBg = 'bg-green-500 text-white';
-    } else if (level === 'Medium') {
-      bgClass = 'bg-yellow-500/10 border-yellow-500/20';
-      badgeBg = 'bg-yellow-500 text-white';
-    } else {
-      bgClass = 'bg-red-500/10 border-red-500/20';
-      badgeBg = 'bg-red-500 text-white';
-    }
-  }
-  return (
-    <div className={`p-4 sm:p-6 rounded-2xl ${borderClass} border ${bgClass}`}>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
-        <h2 className={`text-xl sm:text-2xl font-bold ${themeClasses.text}`}>Aquatic Life Survival Assessment</h2>
-        {survival && (
-          <div className={`px-3 py-1 rounded-full text-sm font-semibold w-fit ${badgeBg}`}>
-            {survival.level}
-          </div>
-        )}
-      </div>
-      {error ? (
-        <div className="flex items-center justify-center p-4 bg-red-500/10 rounded-lg">
-          <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
-          <p className={`${themeClasses.textMuted} text-sm`}>{error}</p>
-        </div>
-      ) : data && survival ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-            <div className="text-center p-3 rounded-lg bg-white/10 col-span-2 md:col-span-1">
-              <div className="text-xl sm:text-2xl font-bold text-blue-400">{survival.probability}%</div>
-              <div className={`${themeClasses.textMuted} text-xs sm:text-sm`}>Estimated Survival Rate</div>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-white/10">
-              <ThermometerSun className="w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-2 text-orange-400" />
-              <div className={`${themeClasses.text} font-medium text-sm`}>Temperature: {data.temperature.toFixed(1)}°C</div>
-              <div className={`${themeClasses.textMuted} text-xs`}>Ocean temperature</div>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-white/10">
-              <Zap className="w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-2 text-purple-400" />
-              <div className={`${themeClasses.text} font-medium text-sm`}>Oxygen: {data.oxygen.toFixed(1)} µmol/kg</div>
-              <div className={`${themeClasses.textMuted} text-xs`}>Dissolved oxygen</div>
-            </div>
-            <div className="text-center p-3 rounded-lg bg-white/10">
-              <Leaf className="w-5 h-5 sm:w-6 sm:h-6 mx-auto mb-2 text-green-400" />
-              <div className={`${themeClasses.text} font-medium text-sm`}>Chl-a: {data.chlorophyll.toFixed(2)} mg/m³</div>
-              <div className={`${themeClasses.textMuted} text-xs`}>Chlorophyll-a</div>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-            <div>
-              <h3 className={`font-semibold mb-2 flex items-center ${themeClasses.text} text-sm sm:text-base`}>
-                <MapPin className="w-4 h-4 sm:w-5 sm:h-5 mr-2 flex-shrink-0" /> Location
-              </h3>
-              <div className={`${themeClasses.textMuted} text-sm`}>Lat: {data.latitude.toFixed(1)}°N, Lon: {data.longitude.toFixed(1)}°E</div>
-            </div>
-            <div>
-              <h3 className={`font-semibold mb-2 flex items-center ${themeClasses.text} text-sm sm:text-base`}>
-                <Droplets className="w-4 h-4 sm:w-5 sm:h-5 mr-2 flex-shrink-0" /> Other Metrics
-              </h3>
-              <div className={`${themeClasses.textMuted} text-sm`}>Salinity: {data.salinity.toFixed(1)} PSU, Depth: {data.depth.toFixed(0)} m</div>
-            </div>
-          </div>
-          <div className="mt-6 p-3 sm:p-4 rounded-lg bg-white/5">
-            <p className={`${themeClasses.textSecondary} text-xs sm:text-sm leading-relaxed`}>
-              This is a mock assessment for aquatic life survival based on temperature, dissolved oxygen, and chlorophyll levels (as a proxy for food availability). High survival indicates optimal environmental conditions for marine organisms.
-            </p>
-          </div>
-        </div>
-      ) : (
-        <p className={`${themeClasses.textMuted} text-center py-8 text-sm sm:text-base`}>Enter ocean data to assess survival rate.</p>
-      )}
-    </div>
-  );
-};
-
-const Predictor = () => {
+export default function Predictor() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  
-  // State for input fields
+
   const [lat, setLat] = useState(9);
   const [lon, setLon] = useState(68);
   const [depth, setDepth] = useState(980);
@@ -208,43 +59,68 @@ const Predictor = () => {
   const [risk, setRisk] = useState(null);
   const [survival, setSurvival] = useState(null);
   const [error, setError] = useState(null);
-  const [darkMode, setDarkMode] = useState(() => {
-    try {
-      return localStorage.getItem('darkMode') === 'true';
-    } catch {
-      return true;
-    }
-  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const themeClasses = {
-    bg: darkMode ? 'bg-gray-900' : 'bg-white',
-    sidebarBg: darkMode ? 'bg-gray-800' : 'bg-gray-50',
-    cardBg: darkMode ? 'bg-gray-800' : 'bg-white',
-    text: darkMode ? 'text-white' : 'text-gray-900',
-    textSecondary: darkMode ? 'text-gray-300' : 'text-gray-600',
-    textMuted: darkMode ? 'text-gray-400' : 'text-gray-500',
-    border: darkMode ? 'border-gray-700' : 'border-gray-200',
-    borderLight: darkMode ? 'border-gray-600' : 'border-gray-100',
-    hoverBg: darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100',
-    inputBg: darkMode ? 'bg-gray-800' : 'bg-gray-50',
-    inputBorder: darkMode ? 'border-gray-600' : 'border-gray-200',
-    inputText: darkMode ? 'text-white' : 'text-gray-900',
-    inputFocus: darkMode ? 'ring-blue-400/20' : 'ring-blue-50',
-    buttonText: darkMode ? 'text-white' : 'text-gray-900'
-  };
+  const fields = useMemo(
+    () => [
+      {
+        label: "Latitude (deg)",
+        value: lat,
+        setValue: setLat,
+        step: "0.1",
+        min: -90,
+        max: 90,
+      },
+      {
+        label: "Longitude (deg)",
+        value: lon,
+        setValue: setLon,
+        step: "0.1",
+        min: -180,
+        max: 180,
+      },
+      {
+        label: "Depth (m)",
+        value: depth,
+        setValue: setDepth,
+        step: "1",
+        min: 0,
+      },
+      {
+        label: "Temperature (C)",
+        value: temperature,
+        setValue: setTemperature,
+        step: "0.1",
+      },
+      {
+        label: "Salinity (PSU)",
+        value: salinity,
+        setValue: setSalinity,
+        step: "0.1",
+      },
+      {
+        label: "Oxygen (umol/kg)",
+        value: oxygen,
+        setValue: setOxygen,
+        step: "0.1",
+      },
+      {
+        label: "Chlorophyll (mg/m3)",
+        value: chlorophyll,
+        setValue: setChlorophyll,
+        step: "0.01",
+      },
+    ],
+    [lat, lon, depth, temperature, salinity, oxygen, chlorophyll]
+  );
 
-  useEffect(() => {
-    localStorage.setItem('darkMode', darkMode.toString());
-  }, [darkMode]);
-
-  // Handle prediction API call
   const handlePredict = async () => {
     setIsLoading(true);
     setError(null);
     setData(null);
     setRisk(null);
     setSurvival(null);
+
     const payload = {
       latitude: parseFloat(lat),
       longitude: parseFloat(lon),
@@ -254,56 +130,58 @@ const Predictor = () => {
       oxygen: parseFloat(oxygen),
       chlorophyll: parseFloat(chlorophyll),
     };
-    console.log('Sending payload:', payload);
+
     try {
-      const response = await fetch('http://localhost:8000/predict/disaster', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("http://localhost:8000/predict/disaster", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`HTTP error ${response.status}: ${errorText}`);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
+
       const result = await response.json();
-      console.log('Received response:', result);
       setData(result);
       setRisk({
-        level: result.disaster_prediction === 'Anomaly' ? 'High' : 'Low',
+        level: result.disaster_prediction === "Anomaly" ? "High Risk" : "Low Risk",
         probability: Math.round(result.prediction_confidence * 100),
       });
 
-      // Mock survival rate calculation
+      let estimatedSurvival = 100;
       const temp = parseFloat(temperature);
       const oxy = parseFloat(oxygen);
       const chl = parseFloat(chlorophyll);
-      let surv = 100;
 
-      // Penalize temperature outside 20-25°C
       if (temp < 20 || temp > 25) {
-        surv -= Math.abs(temp - 22.5) * 2;
+        estimatedSurvival -= Math.abs(temp - 22.5) * 2;
       }
-
-      // Penalize low oxygen
       if (oxy < 50) {
-        surv -= (50 - oxy) * 2;
+        estimatedSurvival -= (50 - oxy) * 2;
       } else if (oxy < 100) {
-        surv -= (100 - oxy) * 0.5;
+        estimatedSurvival -= (100 - oxy) * 0.5;
       }
-
-      // Penalize chlorophyll outside 0.5-1.0 mg/m³
       if (chl < 0.5) {
-        surv -= (0.5 - chl) * 100;
+        estimatedSurvival -= (0.5 - chl) * 100;
       } else if (chl > 1.0) {
-        surv -= (chl - 1.0) * 50;
+        estimatedSurvival -= (chl - 1.0) * 50;
       }
 
-      surv = Math.max(0, Math.min(100, Math.round(surv)));
-      const survLevel = surv > 70 ? 'High Survival' : surv > 40 ? 'Medium Survival' : 'Low Survival';
-      setSurvival({ level: survLevel, probability: surv });
-    } catch (err) {
-      console.error('Prediction error:', err);
-      setError(err.message || 'Failed to fetch prediction');
+      estimatedSurvival = Math.max(0, Math.min(100, Math.round(estimatedSurvival)));
+
+      setSurvival({
+        level:
+          estimatedSurvival > 70
+            ? "High Survival"
+            : estimatedSurvival > 40
+              ? "Medium Survival"
+              : "Low Survival",
+        probability: estimatedSurvival,
+      });
+    } catch (predictionError) {
+      setError(predictionError.message || "Failed to fetch prediction");
     } finally {
       setIsLoading(false);
     }
@@ -311,240 +189,346 @@ const Predictor = () => {
 
   if (!user) {
     return (
-      <div className={`h-screen ${themeClasses.bg} flex items-center justify-center`}>
-        <div className="text-center p-6 sm:p-8 rounded-2xl bg-gray-800/50 max-w-md w-full mx-4">
-          <AlertTriangle className="w-12 h-12 mx-auto mb-4 text-red-500" />
-          <h1 className={`text-xl sm:text-2xl font-bold ${themeClasses.text} mb-4`}>Disaster Predictor</h1>
-          <p className={`${themeClasses.textSecondary} mb-6 text-sm sm:text-base`}>
-            Login required for advanced oceanographic risk assessment.
-          </p>
-          <button 
-            onClick={() => navigate('/login')} 
-            className="w-full sm:w-auto bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg font-medium transition-colors"
-          >
-            Login
-          </button>
+      <PageShell>
+        <div className="flex min-h-screen items-center justify-center px-4 py-10">
+          <div className="premium-panel premium-panel-strong max-w-xl p-8 text-center">
+            <AlertTriangle className="mx-auto h-12 w-12 text-rose-300" />
+            <h1 className="mt-5 font-display text-4xl font-semibold text-white">
+              Sign in required
+            </h1>
+            <p className="mt-4 text-base leading-7 text-slate-300">
+              The prediction suite is part of the authenticated premium workspace.
+              Sign in to test environmental conditions and anomaly risk scenarios.
+            </p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <button onClick={() => navigate("/auth")} className="premium-button">
+                Go to Auth
+              </button>
+              <button onClick={() => navigate("/home")} className="premium-button-secondary">
+                Back to Home
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className={`h-screen ${themeClasses.bg} flex relative overflow-hidden`}>
-      {/* Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 ${themeClasses.sidebarBg} ${themeClasses.border} border-r transition-transform ${
-        sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      } lg:translate-x-0 lg:static lg:z-auto`}>
-        <div className="h-full flex flex-col">
-          <div className="p-4 flex-shrink-0">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className={`text-lg font-semibold ${themeClasses.text}`}>Navigation</h2>
-              <button 
-                onClick={() => setSidebarOpen(false)} 
-                className="lg:hidden p-1 rounded hover:bg-gray-700"
-              >
-                <X className={`w-5 h-5 ${themeClasses.text}`} />
-              </button>
-            </div>
-            <nav className="space-y-2">
-              <button 
-                onClick={() => navigate('/floatchat')} 
-                className={`w-full text-left p-3 rounded-lg ${themeClasses.hoverBg} ${themeClasses.textSecondary} flex items-center space-x-3 text-sm`}
-              >
-                <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                <span className={`${themeClasses.textSecondary}`}>FloatChat</span>
-              </button>
-              <button 
-                onClick={() => navigate('/dashboard')} 
-                className={`w-full text-left p-3 rounded-lg ${themeClasses.hoverBg} ${themeClasses.textSecondary} flex items-center space-x-3 text-sm`}
-              >
-                <BarChart3 className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                <span className={`${themeClasses.textSecondary}`}>Dashboard</span>
-              </button>
-            </nav>
-          </div>
-          <div className="flex-1 lg:block hidden"></div>
-        </div>
-      </div>
-
-      {/* Sidebar Overlay */}
-      {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <header className={`p-3 sm:p-4 ${themeClasses.border} border-b flex items-center justify-between ${themeClasses.bg} shadow-sm`}>
-          <div className="flex items-center space-x-2 sm:space-x-3 flex-1">
-            <button 
-              onClick={() => setSidebarOpen(true)}
-              className={`p-2 ${themeClasses.hoverBg} rounded-lg transition-colors flex-shrink-0`}
+    <PageShell>
+      <div className="mx-auto flex min-h-screen w-full max-w-[1400px] gap-6 px-4 py-6 sm:px-6 lg:px-8">
+        <aside
+          className={`premium-panel premium-panel-strong fixed inset-y-4 left-4 z-40 w-72 p-5 transition-transform lg:static lg:translate-x-0 ${
+            sidebarOpen ? "translate-x-0" : "-translate-x-[120%]"
+          }`}
+        >
+          <div className="flex items-center justify-between">
+            <BrandMark compact />
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white lg:hidden"
+              aria-label="Close navigation"
             >
-              <Menu className={`w-5 h-5 sm:w-6 sm:h-6 ${themeClasses.text}`} />
-            </button>
-            <div className="flex items-center space-x-2 flex-1 min-w-0">
-              <AlertTriangle className="w-5 h-5 sm:w-6 sm:h-6 text-red-500 flex-shrink-0" />
-              <h1 className={`text-lg sm:text-xl font-bold ${themeClasses.text} truncate`}>Disaster Predictor</h1>
-            </div>
-          </div>
-          <div className="flex items-center space-x-1 sm:space-x-2">
-            <button 
-              onClick={() => setDarkMode(!darkMode)} 
-              className={`p-2 ${themeClasses.hoverBg} rounded-lg transition-colors`}
-            >
-              {darkMode ? <Sun className={`w-4 h-4 sm:w-5 sm:h-5 ${themeClasses.text}`} /> : <Moon className={`w-4 h-4 sm:w-5 sm:h-5 ${themeClasses.text}`} />}
+              <X className="h-5 w-5" />
             </button>
           </div>
-        </header>
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar">
-          <div className="max-w-full sm:max-w-4xl mx-auto space-y-4 sm:space-y-6">
-            {/* Input Form */}
-            <div className={`${themeClasses.cardBg} p-4 sm:p-6 rounded-2xl ${themeClasses.border} border shadow-lg`}>
-              <h2 className={`text-lg font-semibold mb-4 flex items-center ${themeClasses.text}`}>
-                <MapPin className="w-5 h-5 mr-2 flex-shrink-0" /> Ocean Data Input
-              </h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className={`${themeClasses.textMuted} block text-sm mb-1`}>Latitude (°N)</label>
-                  <input
-                    type="number"
-                    value={lat}
-                    onChange={e => setLat(e.target.value ? parseFloat(e.target.value) : '')}
-                    step="0.1"
-                    min="-90"
-                    max="90"
-                    className={`${themeClasses.inputBg} ${themeClasses.inputBorder} w-full px-3 py-2 rounded-lg ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm`}
-                    placeholder="e.g., 9.0"
-                  />
-                </div>
-                <div>
-                  <label className={`${themeClasses.textMuted} block text-sm mb-1`}>Longitude (°E)</label>
-                  <input
-                    type="number"
-                    value={lon}
-                    onChange={e => setLon(e.target.value ? parseFloat(e.target.value) : '')}
-                    step="0.1"
-                    min="-180"
-                    max="180"
-                    className={`${themeClasses.inputBg} ${themeClasses.inputBorder} w-full px-3 py-2 rounded-lg ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm`}
-                    placeholder="e.g., 68.0"
-                  />
-                </div>
-                <div>
-                  <label className={`${themeClasses.textMuted} block text-sm mb-1`}>Depth (m)</label>
-                  <input
-                    type="number"
-                    value={depth}
-                    onChange={e => setDepth(e.target.value ? parseFloat(e.target.value) : '')}
-                    step="1"
-                    min="0"
-                    className={`${themeClasses.inputBg} ${themeClasses.inputBorder} w-full px-3 py-2 rounded-lg ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm`}
-                    placeholder="e.g., 980"
-                  />
-                </div>
-                <div>
-                  <label className={`${themeClasses.textMuted} block text-sm mb-1`}>Temperature (°C)</label>
-                  <input
-                    type="number"
-                    value={temperature}
-                    onChange={e => setTemperature(e.target.value ? parseFloat(e.target.value) : '')}
-                    step="0.1"
-                    className={`${themeClasses.inputBg} ${themeClasses.inputBorder} w-full px-3 py-2 rounded-lg ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm`}
-                    placeholder="e.g., 29.5"
-                  />
-                </div>
-                <div>
-                  <label className={`${themeClasses.textMuted} block text-sm mb-1`}>Salinity (PSU)</label>
-                  <input
-                    type="number"
-                    value={salinity}
-                    onChange={e => setSalinity(e.target.value ? parseFloat(e.target.value) : '')}
-                    step="0.1"
-                    className={`${themeClasses.inputBg} ${themeClasses.inputBorder} w-full px-3 py-2 rounded-lg ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm`}
-                    placeholder="e.g., 34.3"
-                  />
-                </div>
-                <div>
-                  <label className={`${themeClasses.textMuted} block text-sm mb-1`}>Oxygen (µmol/kg)</label>
-                  <input
-                    type="number"
-                    value={oxygen}
-                    onChange={e => setOxygen(e.target.value ? parseFloat(e.target.value) : '')}
-                    step="0.1"
-                    className={`${themeClasses.inputBg} ${themeClasses.inputBorder} w-full px-3 py-2 rounded-lg ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm`}
-                    placeholder="e.g., 58.9"
-                  />
-                </div>
-                <div>
-                  <label className={`${themeClasses.textMuted} block text-sm mb-1`}>Chlorophyll (mg/m³)</label>
-                  <input
-                    type="number"
-                    value={chlorophyll}
-                    onChange={e => setChlorophyll(e.target.value ? parseFloat(e.target.value) : '')}
-                    step="0.01"
-                    className={`${themeClasses.inputBg} ${themeClasses.inputBorder} w-full px-3 py-2 rounded-lg ${themeClasses.inputText} focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm`}
-                    placeholder="e.g., 0.1"
-                  />
-                </div>
+          <div className="mt-8 space-y-3">
+            {[
+              { label: "FloatChat", icon: MessageCircle, path: "/floatchat" },
+              { label: "Dashboard", icon: BarChart3, path: "/dashboard" },
+              { label: "3D Globe", icon: Waves, path: "/visuals" },
+            ].map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-left text-sm font-medium text-slate-200 transition-colors hover:bg-white/[0.08]"
+                >
+                  <Icon className="h-4 w-4 text-cyan-100" />
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-8 premium-divider" />
+
+          <div className="mt-8 space-y-4">
+            <div className="premium-card p-4">
+              <p className="text-sm text-slate-300">Model scope</p>
+              <p className="mt-2 font-display text-2xl font-semibold text-white">
+                Anomaly + survival
+              </p>
+            </div>
+            <div className="premium-card p-4">
+              <p className="text-sm text-slate-300">Signal inputs</p>
+              <p className="mt-2 font-display text-2xl font-semibold text-white">
+                7 variables
+              </p>
+            </div>
+          </div>
+        </aside>
+
+        {sidebarOpen ? (
+          <button
+            className="fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close sidebar overlay"
+          />
+        ) : null}
+
+        <main className="min-w-0 flex-1 space-y-6">
+          <section className="premium-panel premium-panel-strong p-6 sm:p-8">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white lg:hidden"
+                  aria-label="Open navigation"
+                >
+                  <Menu className="h-5 w-5" />
+                </button>
+                <p className="premium-kicker">Prediction Suite</p>
+                <h1 className="mt-2 font-display text-4xl font-bold tracking-[-0.05em] text-white sm:text-5xl">
+                  Premium environmental risk assessment.
+                </h1>
+                <p className="mt-4 max-w-3xl text-base leading-8 text-slate-300">
+                  Feed in ocean conditions and test how the model reads anomaly risk
+                  and aquatic-life survival. The UI is tuned for clarity so you can
+                  focus on the signal, not the screen.
+                </p>
               </div>
-              <button
-                onClick={handlePredict}
-                disabled={isLoading || lat === '' || lon === '' || depth === '' || temperature === '' || salinity === '' || oxygen === '' || chlorophyll === ''}
-                className={`mt-4 w-full flex items-center justify-center space-x-2 px-4 sm:px-6 py-3 rounded-lg font-medium transition-all text-sm ${
-                  isLoading || lat === '' || lon === '' || depth === '' || temperature === '' || salinity === '' || oxygen === '' || chlorophyll === ''
-                    ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600'
-                } text-white`}
-              >
-                {isLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Analyzing...</span>
-                  </>
-                ) : (
-                  <>
-                    <ZapIcon className="w-4 h-4" />
-                    <span>Predict Disaster Risk</span>
-                  </>
-                )}
-              </button>
+
+              <div className="flex flex-wrap gap-3">
+                <span className="premium-chip">
+                  <ShieldAlert className="h-4 w-4 text-cyan-100" />
+                  Risk monitoring
+                </span>
+                <span className="premium-chip">
+                  <HeartPulse className="h-4 w-4 text-cyan-100" />
+                  Survival estimate
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <section className="premium-panel p-6 sm:p-8">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06]">
+                <Compass className="h-5 w-5 text-cyan-100" />
+              </div>
+              <div>
+                <p className="premium-kicker">Input Console</p>
+                <h2 className="mt-1 font-display text-2xl font-semibold text-white">
+                  Ocean condition inputs
+                </h2>
+              </div>
             </div>
 
-            {/* Results */}
-            {renderRiskCard(data, risk, themeClasses, error)}
-            {renderSurvivalCard(data, survival, themeClasses, error)}
-
-            {/* Info Panel */}
-            <div className={`${themeClasses.cardBg} p-4 sm:p-6 rounded-2xl ${themeClasses.border} border shadow-lg`}>
-              <h3 className={`font-semibold mb-4 ${themeClasses.text} text-base sm:text-lg`}>How It Works</h3>
-              <ul className="space-y-2 text-xs sm:text-sm">
-                <li className={`${themeClasses.textSecondary}`}>
-                  • Uses ARGO float data for temperature, salinity, oxygen, and chlorophyll
-                </li>
-                <li className={`${themeClasses.textSecondary}`}>
-                  • Machine learning model predicts oceanic anomalies
-                </li>
-                <li className={`${themeClasses.textSecondary}`}>
-                  • High risk indicates potential for extreme oceanic events
-                </li>
-                <li className={`${themeClasses.textSecondary}`}>
-                  • Integrates with backend for real-time predictions
-                </li>
-              </ul>
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {fields.map((field) => (
+                <label key={field.label} className="space-y-2">
+                  <span className="text-sm font-medium text-slate-200">{field.label}</span>
+                  <input
+                    type="number"
+                    value={field.value}
+                    onChange={(event) =>
+                      field.setValue(event.target.value ? parseFloat(event.target.value) : "")
+                    }
+                    step={field.step}
+                    min={field.min}
+                    max={field.max}
+                    className="premium-input"
+                  />
+                </label>
+              ))}
             </div>
 
-            {/* Mobile bottom spacer */}
-            <div className="h-16 lg:hidden"></div>
+            <button
+              onClick={handlePredict}
+              disabled={
+                isLoading ||
+                [lat, lon, depth, temperature, salinity, oxygen, chlorophyll].some(
+                  (value) => value === ""
+                )
+              }
+              className="mt-6 premium-button"
+            >
+              {isLoading ? (
+                <>
+                  <Sparkles className="h-4 w-4 animate-pulse" />
+                  Analyzing conditions...
+                </>
+              ) : (
+                <>
+                  <Zap className="h-4 w-4" />
+                  Predict Risk
+                </>
+              )}
+            </button>
+          </section>
+
+          <div className="grid gap-6 xl:grid-cols-2">
+            <ResultCard
+              title="Disaster Risk Assessment"
+              badge={risk?.level}
+              icon={ShieldAlert}
+            >
+              {error ? (
+                <div className="rounded-[22px] border border-rose-300/20 bg-rose-300/8 px-4 py-4 text-sm text-slate-100">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-rose-200" />
+                    {error}
+                  </div>
+                </div>
+              ) : data && risk ? (
+                <div className="space-y-5">
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="premium-card p-4 sm:col-span-2 xl:col-span-1">
+                      <p className="text-sm text-slate-300">Confidence</p>
+                      <p className="mt-2 font-display text-3xl font-semibold text-white">
+                        {risk.probability}%
+                      </p>
+                    </div>
+                    <div className="premium-card p-4">
+                      <ThermometerSun className="h-5 w-5 text-amber-200" />
+                      <p className="mt-3 text-sm text-slate-300">
+                        Temperature {data.temperature.toFixed(1)} C
+                      </p>
+                    </div>
+                    <div className="premium-card p-4">
+                      <Droplets className="h-5 w-5 text-sky-200" />
+                      <p className="mt-3 text-sm text-slate-300">
+                        Salinity {data.salinity.toFixed(1)} PSU
+                      </p>
+                    </div>
+                    <div className="premium-card p-4">
+                      <Waves className="h-5 w-5 text-emerald-200" />
+                      <p className="mt-3 text-sm text-slate-300">
+                        Chl-a {data.chlorophyll.toFixed(2)} mg/m3
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="premium-card p-4">
+                      <div className="flex items-center gap-2 text-sm text-slate-200">
+                        <MapPin className="h-4 w-4 text-cyan-100" />
+                        Location
+                      </div>
+                      <p className="mt-3 text-sm text-slate-300">
+                        Lat {data.latitude.toFixed(1)}, Lon {data.longitude.toFixed(1)}
+                      </p>
+                    </div>
+                    <div className="premium-card p-4">
+                      <div className="flex items-center gap-2 text-sm text-slate-200">
+                        <Zap className="h-4 w-4 text-cyan-100" />
+                        Oxygen and Depth
+                      </div>
+                      <p className="mt-3 text-sm text-slate-300">
+                        Oxygen {data.oxygen.toFixed(1)} umol/kg, Depth {data.depth.toFixed(0)} m
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm leading-7 text-slate-300">
+                  Enter ocean inputs above to generate a premium anomaly risk readout.
+                </p>
+              )}
+            </ResultCard>
+
+            <ResultCard
+              title="Aquatic Life Survival"
+              badge={survival?.level}
+              icon={LifeBuoy}
+            >
+              {error ? (
+                <div className="rounded-[22px] border border-rose-300/20 bg-rose-300/8 px-4 py-4 text-sm text-slate-100">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-rose-200" />
+                    {error}
+                  </div>
+                </div>
+              ) : data && survival ? (
+                <div className="space-y-5">
+                  <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="premium-card p-4 sm:col-span-2 xl:col-span-1">
+                      <p className="text-sm text-slate-300">Estimated survival</p>
+                      <p className="mt-2 font-display text-3xl font-semibold text-white">
+                        {survival.probability}%
+                      </p>
+                    </div>
+                    <div className="premium-card p-4">
+                      <ThermometerSun className="h-5 w-5 text-amber-200" />
+                      <p className="mt-3 text-sm text-slate-300">
+                        Temperature {data.temperature.toFixed(1)} C
+                      </p>
+                    </div>
+                    <div className="premium-card p-4">
+                      <Zap className="h-5 w-5 text-violet-200" />
+                      <p className="mt-3 text-sm text-slate-300">
+                        Oxygen {data.oxygen.toFixed(1)} umol/kg
+                      </p>
+                    </div>
+                    <div className="premium-card p-4">
+                      <Waves className="h-5 w-5 text-emerald-200" />
+                      <p className="mt-3 text-sm text-slate-300">
+                        Chl-a {data.chlorophyll.toFixed(2)} mg/m3
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="premium-card p-4">
+                      <div className="flex items-center gap-2 text-sm text-slate-200">
+                        <MapPin className="h-4 w-4 text-cyan-100" />
+                        Location
+                      </div>
+                      <p className="mt-3 text-sm text-slate-300">
+                        Lat {data.latitude.toFixed(1)}, Lon {data.longitude.toFixed(1)}
+                      </p>
+                    </div>
+                    <div className="premium-card p-4">
+                      <div className="flex items-center gap-2 text-sm text-slate-200">
+                        <Droplets className="h-4 w-4 text-cyan-100" />
+                        Other metrics
+                      </div>
+                      <p className="mt-3 text-sm text-slate-300">
+                        Salinity {data.salinity.toFixed(1)} PSU, Depth {data.depth.toFixed(0)} m
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm leading-7 text-slate-300">
+                  Survival estimates appear here once a prediction request completes.
+                </p>
+              )}
+            </ResultCard>
           </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
-export default Predictor;
+          <section className="premium-panel p-6 sm:p-8">
+            <p className="premium-kicker">Method</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-white">
+              How this predictor reads the ocean
+            </h2>
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {[
+                "Uses ARGO-derived temperature, salinity, oxygen, and chlorophyll signals.",
+                "Runs a machine learning anomaly read for disaster-oriented risk assessment.",
+                "Estimates marine-life survival from environmental tolerances and oxygen availability.",
+                "Pairs model output with a calmer premium UI so interpretation is faster.",
+              ].map((item) => (
+                <div key={item} className="premium-card p-4">
+                  <p className="text-sm leading-7 text-slate-300">{item}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </main>
+      </div>
+    </PageShell>
+  );
+}

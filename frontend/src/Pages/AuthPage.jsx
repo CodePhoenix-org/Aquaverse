@@ -1,101 +1,182 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Waves } from "lucide-react";
+import {
+  ArrowRight,
+  ShieldCheck,
+  Sparkles,
+  Waves,
+} from "lucide-react";
 import LoginForm from "../components/LoginForm";
 import SignupForm from "../components/SignupForm";
-import { ImagesSlider } from "../components/ImagesSlider";
-import { Boxes } from "../components/Boxes";
+import PageShell from "../components/ui/PageShell";
+import BrandMark from "../components/ui/BrandMark";
+import AppLogo from "../components/ui/AppLogo";
 
-export default function Auth() {
+const fadeUp = {
+  hidden: { opacity: 0, y: 22 },
+  show: { opacity: 1, y: 0 },
+};
+
+export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
-  const images = [
-    "/images/ocean1.png",
-    "/images/ocean2.png",
-    "/images/ocean3.png",
-    "/images/ocean4.png",
-  ];
+
+  const highlights = useMemo(
+    () => [
+      "Live access to FloatChat, dashboard analytics, and premium 3D globe views.",
+      "Unified ocean-tech interface tuned for clarity on desktop and mobile.",
+      "Fast route from sign-in to research-ready exploration.",
+    ],
+    []
+  );
+
+  const stats = useMemo(
+    () => [
+      { value: "24/7", label: "Monitoring cadence" },
+      { value: "150+", label: "Research sources" },
+      { value: "4", label: "Core analysis views" },
+    ],
+    []
+  );
 
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
-      {/* Left Half - Video Background (replaces Image Slider) */}
-      <div className="w-full lg:w-1/2 h-screen lg:h-screen relative overflow-hidden">
-        {/* <ImagesSlider ... /> */}
-        {/* Video background */}
-        <video
-          className="h-full w-full object-cover"
-          src="/videos/authVid.mp4"
-          autoPlay
-          loop
-          muted
-          playsInline
-        />
-        {/* Overlay Content on Video */}
-        <div className="absolute inset-0 z-10 flex flex-col justify-center items-center text-white p-4 lg:p-8">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="text-center"
-          >
-            <div className="inline-flex items-center justify-center w-16 h-16 lg:w-24 lg:h-24 rounded-full bg-gradient-to-r from-cyan-400/20 to-blue-500/20 backdrop-blur-sm mb-4 lg:mb-6 border border-white/20">
-              <Waves className="w-8 h-8 lg:w-12 lg:h-12 text-white animate-pulse" />
-            </div>
-            <h1 className="text-3xl lg:text-5xl font-bold mb-2 lg:mb-4 tracking-wider bg-gradient-to-r from-cyan-300 to-blue-300 bg-clip-text text-transparent">
-              AquaVerse
-            </h1>
-            <p className="text-lg lg:text-xl text-blue-100 mb-1 lg:mb-2">
-              Explore the depths of marine science
-            </p>
-            <p className="text-sm lg:text-lg text-blue-200/80">
-              AI-Powered Ocean Data Discovery
-            </p>
-          </motion.div>
-        </div>
-      </div>
-
-      {/* Right Half - Auth Form */}
-  <div className="w-full lg:w-1/2 h-screen lg:h-screen relative flex items-center justify-center p-4 lg:p-12 overflow-hidden bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
-        {/* Animated Boxes Background */}
-        <Boxes />
-        {/* Form Content Overlay */}
-        <motion.div
-          initial={{ opacity: 0, x: 50 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6 }}
-          className="w-full max-w-md lg:max-w-lg z-10"
+    <PageShell backdropVariant="dense">
+      <main className="mx-auto grid min-h-screen max-w-7xl items-center gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8">
+        <motion.section
+          variants={fadeUp}
+          initial="hidden"
+          animate="show"
+          transition={{ duration: 0.65 }}
+          className="relative overflow-hidden rounded-[34px] border border-white/10 bg-slate-950/40 shadow-ocean"
         >
-          <div className="bg-white/5 backdrop-blur-lg rounded-2xl lg:rounded-3xl p-6 lg:p-8 border border-white/20 shadow-2xl">
-            {/* Header */}
-            <div className="text-center mb-6 lg:mb-8">
-              <div className="inline-flex items-center justify-center w-12 h-12 lg:w-16 lg:h-16 rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 mb-3 lg:mb-4 shadow-lg shadow-blue-500/25">
-                <Waves className="w-6 h-6 lg:w-8 lg:h-8 text-white animate-pulse" />
-              </div>
-              <h2 className="text-xl lg:text-2xl font-bold text-white mb-2 tracking-wider">
-                {isLogin ? "Welcome Back" : "Join AquaVerse"}
-              </h2>
-              <p className="text-blue-200 text-xs lg:text-sm">
-                {isLogin ? "Sign in to continue your exploration" : "Start your oceanographic journey"}
-              </p>
+          <video
+            className="absolute inset-0 h-full w-full object-cover"
+            src="/videos/authVid.mp4"
+            autoPlay
+            loop
+            muted
+            playsInline
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(2,10,23,0.35),rgba(2,10,23,0.78)_45%,rgba(2,10,23,0.96))]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(125,211,252,0.18),transparent_30%)]" />
+
+          <div className="relative z-10 flex min-h-[42rem] flex-col justify-between p-6 sm:p-8 lg:p-10">
+            <div className="flex items-center justify-between gap-4">
+              <BrandMark subtitle="Premium ocean data access" />
+              <span className="premium-chip">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Secure Sign-In
+              </span>
             </div>
 
-            {/* Forms */}
-            {isLogin ? <LoginForm /> : <SignupForm />}
-
-            {/* Toggle */}
-            <div className="text-center mt-4 lg:mt-6">
-              <p className="text-blue-200 text-xs lg:text-sm">
-                {isLogin ? "New to oceanography? " : "Already exploring with us? "}
-                <button
-                  onClick={() => setIsLogin(!isLogin)}
-                  className="text-cyan-400 hover:text-cyan-300 underline font-medium transition-colors"
-                >
-                  {isLogin ? "Start your journey" : "Welcome back"}
-                </button>
+            <div className="max-w-2xl">
+              <span className="premium-badge">
+                <Sparkles className="h-3.5 w-3.5" />
+                Ocean Intelligence, Refined
+              </span>
+              <h1 className="mt-6 font-display text-4xl font-bold tracking-[-0.05em] text-white sm:text-5xl lg:text-6xl">
+                Explore marine data through a more premium, immersive workspace.
+              </h1>
+              <p className="mt-5 max-w-xl text-base leading-8 text-slate-200 sm:text-lg">
+                Sign in to access FloatChat, dashboards, and anomaly-aware ocean
+                views inside AquaVerse&apos;s upgraded command experience.
               </p>
+
+              <div className="mt-8 grid gap-3">
+                {highlights.map((item) => (
+                  <div
+                    key={item}
+                    className="premium-chip w-fit max-w-full rounded-2xl px-4 py-3 text-left text-sm text-slate-100"
+                  >
+                    <ArrowRight className="h-4 w-4 flex-none" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3">
+              {stats.map((stat) => (
+                <div key={stat.label} className="premium-card p-5">
+                  <p className="font-display text-3xl font-bold text-white">
+                    {stat.value}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-300">{stat.label}</p>
+                </div>
+              ))}
             </div>
           </div>
-        </motion.div>
-      </div>
-    </div>
+        </motion.section>
+
+        <motion.section
+          variants={fadeUp}
+          initial="hidden"
+          animate="show"
+          transition={{ duration: 0.7, delay: 0.1 }}
+          className="premium-panel premium-panel-strong relative overflow-hidden p-6 sm:p-8"
+        >
+          <div className="absolute inset-x-12 top-0 h-32 rounded-full bg-cyan-300/12 blur-3xl" />
+          <div className="relative z-10">
+            <div className="flex items-center gap-4">
+              <AppLogo size="lg" />
+              <div>
+                <p className="premium-kicker">Access Portal</p>
+                <h2 className="mt-2 font-display text-3xl font-semibold text-white">
+                  {isLogin ? "Welcome back" : "Create your account"}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-300">
+                  {isLogin
+                    ? "Sign in to continue exploring the upgraded AquaVerse experience."
+                    : "Join AquaVerse to unlock chat, data views, and premium prediction tools."}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-8 grid grid-cols-2 gap-3 rounded-full border border-white/10 bg-slate-950/40 p-2">
+              <button
+                onClick={() => setIsLogin(true)}
+                className={`rounded-full px-4 py-3 text-sm font-semibold transition-all ${
+                  isLogin
+                    ? "bg-gradient-to-r from-cyan-300 to-sky-400 text-slate-950 shadow-lg"
+                    : "text-slate-300"
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => setIsLogin(false)}
+                className={`rounded-full px-4 py-3 text-sm font-semibold transition-all ${
+                  !isLogin
+                    ? "bg-gradient-to-r from-cyan-300 to-sky-400 text-slate-950 shadow-lg"
+                    : "text-slate-300"
+                }`}
+              >
+                Create Account
+              </button>
+            </div>
+
+            <div className="mt-8">
+              {isLogin ? <LoginForm /> : <SignupForm />}
+            </div>
+
+            <div className="mt-8 premium-divider" />
+
+            <div className="mt-6 flex flex-col gap-3 text-sm text-slate-300 sm:flex-row sm:items-center sm:justify-between">
+              <div className="premium-chip rounded-full px-4 py-2">
+                <Waves className="h-4 w-4" />
+                Premium ocean-tech UI now live
+              </div>
+              <button
+                onClick={() => setIsLogin((value) => !value)}
+                className="text-left font-semibold text-cyan-200 transition-colors hover:text-white sm:text-right"
+              >
+                {isLogin
+                  ? "Need an account? Create one now."
+                  : "Already registered? Sign back in."}
+              </button>
+            </div>
+          </div>
+        </motion.section>
+      </main>
+    </PageShell>
   );
 }

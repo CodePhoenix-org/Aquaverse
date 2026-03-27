@@ -33,6 +33,8 @@ import {
   Info,
   Download,
 } from "lucide-react";
+import PageShell from "./ui/PageShell";
+import AppLogo from "./ui/AppLogo";
 
 // Inject custom scrollbar and animation styles globally (only once)
 if (typeof window !== "undefined") {
@@ -848,25 +850,29 @@ if (token) {
   ];
 
   const themeClasses = {
-    bg: darkMode ? "bg-gray-900" : "bg-white",
-    sidebarBg: darkMode ? "bg-gray-800/95 backdrop-blur-md" : "bg-gray-50/95 backdrop-blur-md",
-    cardBg: darkMode ? "bg-gray-800/50" : "bg-white/80",
-    cardHoverBg: darkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100/80",
-    promptBg: darkMode ? "bg-gray-800/50" : "bg-gray-50/80",
-    promptHoverBg: darkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100/80",
-    text: darkMode ? "text-white" : "text-gray-900",
-    textSecondary: darkMode ? "text-gray-300" : "text-gray-600",
-    textMuted: darkMode ? "text-gray-400" : "text-gray-500",
-    border: darkMode ? "border-gray-700/50" : "border-gray-200/50",
-    borderLight: darkMode ? "border-gray-600/50" : "border-gray-100/50",
-    inputBg: darkMode ? "bg-gray-800/50 backdrop-blur-md" : "bg-gray-50/80 backdrop-blur-md",
-    inputBorder: darkMode ? "border-gray-600/50" : "border-gray-200/50",
-    inputFocus: darkMode ? "border-blue-400 ring-blue-400/30" : "border-blue-300 ring-blue-300/30",
-    botMessageBg: darkMode ? "bg-gray-800/50 backdrop-blur-md" : "bg-gray-50/80 backdrop-blur-md",
-    hoverBg: darkMode ? "hover:bg-gray-700/50" : "hover:bg-gray-100/80",
-    buttonHoverBg: darkMode ? "hover:bg-gray-600/50" : "hover:bg-gray-100/80",
-    accent: "bg-gradient-to-r from-blue-500 to-cyan-600",
-    accentHover: "hover:from-blue-600 hover:to-cyan-700",
+    bg: darkMode ? "bg-slate-950/45 backdrop-blur-sm" : "bg-white/[0.76] backdrop-blur-sm",
+    sidebarBg: darkMode
+      ? "bg-[linear-gradient(180deg,rgba(4,15,28,0.96),rgba(7,24,42,0.96))] backdrop-blur-2xl"
+      : "bg-white/[0.82] backdrop-blur-2xl",
+    cardBg: darkMode ? "bg-white/[0.05]" : "bg-white/[0.88]",
+    cardHoverBg: darkMode ? "hover:bg-white/[0.08]" : "hover:bg-white",
+    promptBg: darkMode ? "bg-white/[0.04]" : "bg-white/[0.88]",
+    promptHoverBg: darkMode ? "hover:bg-white/[0.08]" : "hover:bg-white",
+    text: darkMode ? "text-white" : "text-slate-950",
+    textSecondary: darkMode ? "text-slate-200" : "text-slate-700",
+    textMuted: darkMode ? "text-slate-400" : "text-slate-500",
+    border: darkMode ? "border-white/10" : "border-slate-200/80",
+    borderLight: darkMode ? "border-white/[0.08]" : "border-slate-200/80",
+    inputBg: darkMode ? "bg-white/[0.04] backdrop-blur-2xl" : "bg-white/[0.92] backdrop-blur-2xl",
+    inputBorder: darkMode ? "border-white/10" : "border-slate-200/80",
+    inputFocus: darkMode ? "border-cyan-300 ring-cyan-300/20" : "border-sky-400 ring-sky-100",
+    botMessageBg: darkMode
+      ? "bg-white/[0.05] backdrop-blur-2xl border border-white/10"
+      : "bg-white/[0.94] backdrop-blur-2xl border border-slate-200/80",
+    hoverBg: darkMode ? "hover:bg-white/[0.08]" : "hover:bg-slate-100/90",
+    buttonHoverBg: darkMode ? "hover:bg-white/[0.08]" : "hover:bg-slate-100/90",
+    accent: "bg-gradient-to-br from-cyan-300 to-sky-500 text-slate-950",
+    accentHover: "hover:brightness-110",
   };
 
   const getVoiceButtonClasses = () => {
@@ -950,9 +956,10 @@ if (token) {
   };
 
   return (
-    <div
-      className={`h-screen ${themeClasses.bg} flex relative transition-all duration-300 font-sans antialiased overflow-hidden`}
-    >
+    <PageShell className="h-screen" contentClassName="h-screen">
+      <div
+        className={`relative z-10 h-screen ${themeClasses.bg} flex transition-all duration-300 font-sans antialiased overflow-hidden`}
+      >
       <input
         type="file"
         ref={fileInputRef}
@@ -977,11 +984,11 @@ if (token) {
           className={`flex items-center justify-between p-6 ${themeClasses.border} border-b`}
         >
           <div className="flex items-center space-x-3">
-            <div
-              className={`w-14 h-14 ${themeClasses.accent} rounded-xl flex items-center justify-center shadow-xl animate-float`}
-            >
-              <Waves className="w-8 h-8 text-white" />
-            </div>
+            <AppLogo
+              size="lg"
+              className="animate-float border-white/20 shadow-xl"
+              alt="AquaVerse FloatChat logo"
+            />
             <div>
               <h1
                 className={`text-2xl font-bold ${themeClasses.text} tracking-tight`}
@@ -1177,11 +1184,11 @@ if (token) {
           {messages.length === 0 ? (
             <div className="max-w-5xl mx-auto px-6 py-16">
               <div className="text-center mb-12 animate-slide-in">
-                <div
-                  className={`w-24 h-24 ${themeClasses.accent} rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-2xl animate-float`}
-                >
-                  <Waves className="w-12 h-12 text-white" />
-                </div>
+                <AppLogo
+                  size="xl"
+                  className="mx-auto mb-6 animate-float border-white/20 shadow-2xl"
+                  alt="AquaVerse FloatChat logo"
+                />
                 <h1
                   className={`text-4xl font-extrabold ${themeClasses.text} mb-4 tracking-tight`}
                 >
@@ -1536,7 +1543,8 @@ if (token) {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </PageShell>
   );
 };
 

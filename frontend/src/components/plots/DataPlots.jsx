@@ -1,505 +1,431 @@
-import React, { useState, useEffect } from 'react';
-import Plot from 'react-plotly.js';
-import { validatePlotData, has3DData, extract3DParameterData, extract3DOceanData, transformApiData } from '../../utils/dataTransformers';
-import ThreeDScatterPlot from './ThreeDScatterPlot';
-import OceanScatter3DPlot from './OceanScatter3DPlot';
-import { BarChart3, Globe, Database, Loader } from 'lucide-react';
+import { useEffect, useMemo, useState } from "react";
+import Plot from "react-plotly.js";
+import { BarChart3, Database, Globe, Loader2 } from "lucide-react";
+import {
+  extract3DOceanData,
+  extract3DParameterData,
+  has3DData,
+  transformApiData,
+  validatePlotData,
+} from "../../utils/dataTransformers";
+import OceanScatter3DPlot from "./OceanScatter3DPlot";
+import ThreeDScatterPlot from "./ThreeDScatterPlot";
 
-const DataPlots = ({ data }) => {
-    const [activeTab, setActiveTab] = useState('2d'); // '2d' or '3d'
-    const [active3DView, setActive3DView] = useState('parameter'); // 'parameter' or 'ocean'
-    const [threeDData, setThreeDData] = useState(null);
-    const [loading3D, setLoading3D] = useState(false);
-    const [availableParameters, setAvailableParameters] = useState([]);
-    const [activeParameter, setActiveParameter] = useState('temperature');
-    const [plotReadyData, setPlotReadyData] = useState(null);
-    const [error, setError] = useState(null);
-
-    // Process incoming data
-    useEffect(() => {
-        console.log('=== DATAPLOTS COMPONENT ===');
-        console.log('DataPlots received data:', data);
-        
-        setError(null);
-        
-        if (!data) {
-            console.log('No data provided to DataPlots');
-            setAvailableParameters(['temperature']);
-            setPlotReadyData(null);
-            
-            // Check if we should auto-switch to 3D based on data type
-            if (data && has3DData(data)) {
-                setActiveTab('3d');
-                setThreeDData(data);
-            }
-            return;
-        }
-        
-        // Check for 3D data
-        if (has3DData(data)) {
-            console.log('3D data detected in incoming data');
-            setThreeDData(data);
-            setActiveTab('3d');
-            
-            // Determine which 3D view to show
-            if (data.type === '3d_parameter_plot') {
-                setActive3DView('parameter');
-            } else if (data.type === '3d_ocean_plot') {
-                setActive3DView('ocean');
-            }
-        }
-        
-        // Process 2D profile data
-        if (!validatePlotData(data)) {
-            console.log('Invalid plot data structure');
-            setAvailableParameters(['temperature']);
-            setPlotReadyData(null);
-            return;
-        }
-        
-        try {
-            const params = Object.keys(data.profiles).filter(param => {
-                const profile = data.profiles[param];
-                return profile && 
-                       Array.isArray(profile.depths) && 
-                       Array.isArray(profile.values) &&
-                       profile.depths.length > 0 &&
-                       profile.values.length > 0;
-            });
-            
-            console.log('Valid parameters found:', params);
-            
-            if (params.length === 0) {
-                setError('No valid parameters found in data');
-                setAvailableParameters(['temperature']);
-                setPlotReadyData(null);
-                return;
-            }
-            
-            setAvailableParameters(params);
-            
-            // Set initial parameter
-            if (params.includes('salinity')) {
-                setActiveParameter('salinity');
-            } else if (params.includes('temperature')) {
-                setActiveParameter('temperature');
-            } else {
-                setActiveParameter(params[0]);
-            }
-            
-            setPlotReadyData(data.profiles);
-            
-        } catch (err) {
-            console.error('Error processing data:', err);
-            setError('Error processing data: ' + err.message);
-            setAvailableParameters(['temperature']);
-            setPlotReadyData(null);
-        }
-    }, [data]);
-
-
-    // Fetch 3D data from backend
-    const fetch3DData = async (type = 'parameter') => {
-        setLoading3D(true);
-        setError(null);
-        try {
-            const endpoint = `/api/3d/${type === 'parameter' ? 'parameter-plot' : 'ocean-plot'}?region=indian&limit=${type === 'parameter' ? 1000 : 500}`;
-            const response = await fetch(endpoint);
-
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-
-            const apiData = await response.json();
-            console.log('API Response:', apiData);  // Debug the raw response
-            const transformedData = transformApiData(apiData);
-      
-            if (!transformedData || !transformedData.threeDData) {
-                throw new Error('Invalid or empty 3D data received');
-            }
-
-            setThreeDData(transformedData);
-        } catch (err) {
-            console.error('Error fetching 3D data:', err);
-            setError(`Failed to fetch 3D data: ${err.message}. Check backend logs.`);
-            // Remove mock data fallback in production
-            if (type === 'parameter') {
-                setThreeDData(transformApiData({ type: '3d_parameter_plot', normalData: [], anomalyData: [] }));
-            } else {
-                setThreeDData(transformApiData({ type: '3d_ocean_plot', oceanData: [] }));
-            }
-        } finally {
-            setLoading3D(false);
-        }
-    };
-
-    // Handle 3D view change
-    const handle3DViewChange = (newView) => {
-        setActive3DView(newView);
-        fetch3DData(newView);  // Fetch data on view change
-    };
-
-    // Effect to fetch initial data and handle tab switches
-    useEffect(() => {
-        if (activeTab === '3d') {
-            fetch3DData(active3DView);
-            const interval = setInterval(() => fetch3DData(active3DView), 60000);  // Refresh every 60s
-            return () => clearInterval(interval);
-        }
-    }, [activeTab, active3DView]);
-
-    // (Removed duplicate handle3DViewChange definition)
-
-    // Sample data for fallback
-    const sampleData = {
-        temperature: {
-            depths: [0, 10, 20, 50, 100, 200, 500, 1000, 1500, 2000],
-            values: [28.5, 28.2, 27.8, 25.1, 22.3, 18.7, 12.4, 8.2, 5.1, 3.8],
-            title: 'Temperature Profile (Sample)',
-            yLabel: 'Temperature (°C)',
-            color: '#ff6b6b'
-        },
-        salinity: {
-            depths: [0, 10, 20, 50, 100, 200, 500, 1000, 1500, 2000],
-            values: [34.2, 34.3, 34.4, 34.6, 34.8, 35.1, 35.3, 35.0, 34.8, 34.7],
-            title: 'Salinity Profile (Sample)',
-            yLabel: 'Salinity (PSU)',
-            color: '#4ecdc4'
-        }
-    };
-
-    const getCurrent2DData = () => {
-        if (plotReadyData && plotReadyData[activeParameter]) {
-            return plotReadyData[activeParameter];
-        }
-        return sampleData[activeParameter] || sampleData.temperature;
-    };
-
-    const getParameterUnit = (param) => {
-        const units = {
-            temperature: '°C',
-            salinity: 'PSU',
-            oxygen: 'μmol/kg',
-            chlorophyll: 'mg/m³'
-        };
-        return units[param] || '';
-    };
-
-    const current2DData = getCurrent2DData();
-    const isReal2DData = plotReadyData && plotReadyData[activeParameter];
-    const hasValid2DData = current2DData.values && 
-                          current2DData.depths && 
-                          current2DData.values.length > 0 && 
-                          current2DData.depths.length > 0;
-
-    // 2D Plot configuration
-    const plotConfig = {
-        data: hasValid2DData ? [
-            {
-                x: current2DData.values,
-                y: current2DData.depths,
-                type: 'scatter',
-                mode: 'lines+markers',
-                marker: { 
-                    color: current2DData.color, 
-                    size: 6,
-                    symbol: isReal2DData ? 'circle' : 'diamond-dot'
-                },
-                line: { 
-                    color: current2DData.color, 
-                    width: 2,
-                    dash: isReal2DData ? 'solid' : 'dot'
-                },
-                name: current2DData.title,
-                hovertemplate: 
-                    '<b>Depth</b>: %{y}m<br>' +
-                    `<b>${current2DData.yLabel}</b>: %{x} ${getParameterUnit(activeParameter)}<br>` +
-                    '<extra></extra>'
-            }
-        ] : [],
-        layout: {
-            title: {
-                text: hasValid2DData ? 
-                    (isReal2DData ? `${current2DData.title} - Real ARGO Data` : `${current2DData.title} - Sample Data`) 
-                    : 'No Data Available',
-                font: { size: 16, family: 'Arial', color: '#2c3e50' }
-            },
-            xaxis: {
-                title: {
-                    text: hasValid2DData ? current2DData.yLabel : 'Values',
-                    font: { size: 14, family: 'Arial' }
-                },
-                showgrid: true,
-                gridcolor: '#e0e0e0',
-                zeroline: true,
-                zerolinecolor: '#bdc3c7'
-            },
-            yaxis: {
-                title: {
-                    text: 'Depth (m)',
-                    font: { size: 14, family: 'Arial' }
-                },
-                autorange: 'reversed',
-                showgrid: true,
-                gridcolor: '#e0e0e0',
-                zeroline: true,
-                zerolinecolor: '#bdc3c7'
-            },
-            margin: { l: 70, r: 40, t: 60, b: 60 },
-            plot_bgcolor: '#f8f9fa',
-            paper_bgcolor: '#ffffff',
-            font: { family: 'Arial', size: 12, color: '#2c3e50' },
-            hoverlabel: {
-                bgcolor: '#fff',
-                bordercolor: '#ddd',
-                font: { family: 'Arial', size: 12 }
-            }
-        },
-        config: {
-            displayModeBar: true,
-            displaylogo: false,
-            modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d'],
-            toImageButtonOptions: {
-                format: 'png',
-                filename: `${activeParameter}_profile`,
-                height: 600,
-                width: 800,
-                scale: 2
-            }
-        }
-    };
-
-    if (error) {
-        return (
-            <div className="h-full flex flex-col items-center justify-center bg-white rounded-lg border border-gray-200 p-8">
-                <div className="text-center">
-                    <div className="text-red-500 text-6xl mb-4">⚠️</div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Data Error</h3>
-                    <p className="text-gray-600 mb-4">{error}</p>
-                    <p className="text-sm text-gray-500">
-                        Please check the browser console for detailed error information.
-                    </p>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className="h-full flex flex-col bg-white rounded-lg border border-gray-200">
-            {/* Header */}
-            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200">
-                <div className="flex items-center justify-between">
-                    <div>
-                        <h3 className="text-lg font-medium text-gray-900">Ocean Data Visualizations</h3>
-                        <p className="text-sm text-gray-600">
-                            {activeTab === '2d' ? '2D Depth Profiles' : '3D Interactive Visualizations'}
-                        </p>
-                    </div>
-                    
-                    {/* Tab Navigation */}
-                    <div className="flex gap-2 bg-white rounded-lg p-1 border">
-                        <button
-                            onClick={() => setActiveTab('2d')}
-                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                activeTab === '2d' 
-                                    ? 'bg-blue-500 text-white shadow-md' 
-                                    : 'text-gray-700 hover:bg-gray-100'
-                            }`}
-                        >
-                            <BarChart3 className="w-4 h-4 inline mr-2" />
-                            2D Profiles
-                        </button>
-                        <button
-                            onClick={() => {
-                                setActiveTab('3d');
-                                if (!threeDData) fetch3DData('parameter');
-                            }}
-                            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                activeTab === '3d' 
-                                    ? 'bg-green-500 text-white shadow-md' 
-                                    : 'text-gray-700 hover:bg-gray-100'
-                            }`}
-                        >
-                            <Globe className="w-4 h-4 inline mr-2" />
-                            3D Visualizations
-                        </button>
-                    </div>
-                </div>
-            </div>
-            
-            {/* Content Area */}
-            <div className="flex-1 p-4">
-                {activeTab === '2d' ? (
-                    /* 2D Profile Content */
-                    <div className="h-full flex flex-col">
-                        {/* Parameter Selection */}
-                        <div className="bg-white border-b border-gray-200 p-3 mb-4">
-                            <div className="flex flex-wrap gap-2">
-                                {availableParameters.map((param) => (
-                                    <button
-                                        key={param}
-                                        onClick={() => setActiveParameter(param)}
-                                        className={`px-3 py-2 rounded-md text-sm font-medium transition-all ${
-                                            activeParameter === param
-                                                ? 'bg-blue-500 text-white shadow-md'
-                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                        }`}
-                                    >
-                                        {param.charAt(0).toUpperCase() + param.slice(1)}
-                                        {plotReadyData && plotReadyData[param] && (
-                                            <span className="ml-1 text-xs opacity-75">
-                                                ({plotReadyData[param].values.length} pts)
-                                            </span>
-                                        )}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        
-                        {/* 2D Plot */}
-                        <div className="flex-1">
-                            {hasValid2DData ? (
-                                <Plot
-                                    data={plotConfig.data}
-                                    layout={plotConfig.layout}
-                                    config={plotConfig.config}
-                                    style={{ width: '100%', height: '100%', minHeight: '400px' }}
-                                    useResizeHandler={true}
-                                />
-                            ) : (
-                                <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                                    <div className="text-6xl mb-4">📊</div>
-                                    <p className="text-lg mb-2">No data available for plotting</p>
-                                    <p className="text-sm text-center">
-                                        The data received doesn't contain valid depth-value pairs for {activeParameter}.
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                ) : (
-                    /* 3D Visualization Content */
-                    <div className="h-full flex flex-col">
-                        {/* 3D View Selection */}
-                        <div className="bg-white border-b border-gray-200 p-3 mb-4">
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => handle3DViewChange('parameter')}
-                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                        active3DView === 'parameter' 
-                                            ? 'bg-purple-500 text-white shadow-md' 
-                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                    }`}
-                                >
-                                    Parameter 3D
-                                </button>
-                                <button
-                                    onClick={() => handle3DViewChange('ocean')}
-                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-                                        active3DView === 'ocean' 
-                                            ? 'bg-teal-500 text-white shadow-md' 
-                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                                    }`}
-                                >
-                                    Ocean 3D
-                                </button>
-                            </div>
-                        </div>
-                        
-                        {/* 3D Plot Area */}
-                        <div className="flex-1">
-                            {loading3D ? (
-                                <div className="flex flex-col items-center justify-center h-full">
-                                    <Loader className="w-8 h-8 animate-spin text-blue-500 mb-4" />
-                                    <p className="text-gray-600">Loading 3D visualization...</p>
-                                </div>
-                            ) : threeDData ? (
-                                <div className="h-full">
-                                    {active3DView === 'parameter' && threeDData.type === '3d_parameter_plot' && (
-                                        <ThreeDScatterPlot 
-                                            normalData={extract3DParameterData(threeDData).normalData}
-                                            anomalyData={extract3DParameterData(threeDData).anomalyData}
-                                        />
-                                    )}
-                                    {active3DView === 'ocean' && threeDData.type === '3d_ocean_plot' && (
-                                        <OceanScatter3DPlot 
-                                            data={extract3DOceanData(threeDData)}
-                                        />
-                                    )}
-                                    
-                                    {/* Metadata Display */}
-                                    {threeDData.metadata && (
-                                        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                                            <div className="text-sm text-gray-600 grid grid-cols-2 md:grid-cols-4 gap-2">
-                                                <div><span className="font-medium">Title:</span> {threeDData.metadata.title}</div>
-                                                <div><span className="font-medium">Region:</span> {threeDData.metadata.region}</div>
-                                                <div><span className="font-medium">Total Points:</span> {threeDData.metadata.total_points}</div>
-                                                {threeDData.metadata.normal_count && (
-                                                    <div><span className="font-medium">Normal Points:</span> {threeDData.metadata.normal_count}</div>
-                                                )}
-                                                {threeDData.metadata.anomaly_count && (
-                                                    <div><span className="font-medium">Anomaly Points:</span> {threeDData.metadata.anomaly_count}</div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                                    <Database className="w-12 h-12 mb-4 opacity-50" />
-                                    <p className="text-lg mb-2">No 3D data available</p>
-                                    <p className="text-sm text-center">
-                                        Click on the buttons above to load 3D visualizations.
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}
-            </div>
-            
-            {/* Footer Summary */}
-            <div className="bg-gray-50 border-t border-gray-200 p-3">
-                <div className="text-sm text-gray-600">
-                    {activeTab === '2d' ? (
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                            <div>
-                                <span className="font-medium">Status: </span>
-                                <span className={isReal2DData ? "text-green-600" : "text-yellow-600"}>
-                                    {isReal2DData ? "✅ Real Data" : "📋 Sample Data"}
-                                </span>
-                            </div>
-                            <div>
-                                <span className="font-medium">Parameter: </span>
-                                {activeParameter}
-                            </div>
-                            <div>
-                                <span className="font-medium">Data Points: </span>
-                                {hasValid2DData ? current2DData.values.length : 0}
-                            </div>
-                            {hasValid2DData && (
-                                <>
-                                    <div>
-                                        <span className="font-medium">Value Range: </span>
-                                        {Math.min(...current2DData.values).toFixed(2)} - {Math.max(...current2DData.values).toFixed(2)} {getParameterUnit(activeParameter)}
-                                    </div>
-                                    <div>
-                                        <span className="font-medium">Depth Range: </span>
-                                        {Math.min(...current2DData.depths)} - {Math.max(...current2DData.depths)}m
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    ) : (
-                        <div className="text-center">
-                            <span className="font-medium">3D Visualization Mode: </span>
-                            {active3DView === 'parameter' ? 'Parameter Space (T-S-O)' : 'Geographic Space (Lon-Lat-Depth)'}
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
+const sampleData = {
+  temperature: {
+    depths: [0, 10, 20, 50, 100, 200, 500, 1000, 1500, 2000],
+    values: [28.5, 28.2, 27.8, 25.1, 22.3, 18.7, 12.4, 8.2, 5.1, 3.8],
+    title: "Temperature Profile",
+    yLabel: "Temperature (C)",
+    color: "#6fe7ff",
+  },
+  salinity: {
+    depths: [0, 10, 20, 50, 100, 200, 500, 1000, 1500, 2000],
+    values: [34.2, 34.3, 34.4, 34.6, 34.8, 35.1, 35.3, 35.0, 34.8, 34.7],
+    title: "Salinity Profile",
+    yLabel: "Salinity (PSU)",
+    color: "#2dd4bf",
+  },
 };
 
-export default DataPlots;
+const plotTheme = {
+  paper_bgcolor: "rgba(7, 24, 42, 0)",
+  plot_bgcolor: "rgba(7, 24, 42, 0)",
+  font: { family: "Manrope, sans-serif", color: "#d9ecff", size: 12 },
+  margin: { l: 70, r: 24, t: 56, b: 60 },
+};
+
+function TabButton({ active, onClick, icon: Icon, children }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition-all ${
+        active
+          ? "bg-gradient-to-r from-cyan-300 to-sky-400 text-slate-950 shadow-lg"
+          : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+      {children}
+    </button>
+  );
+}
+
+export default function DataPlots({ data }) {
+  const [activeTab, setActiveTab] = useState("2d");
+  const [active3DView, setActive3DView] = useState("parameter");
+  const [threeDData, setThreeDData] = useState(null);
+  const [loading3D, setLoading3D] = useState(false);
+  const [availableParameters, setAvailableParameters] = useState(["temperature"]);
+  const [activeParameter, setActiveParameter] = useState("temperature");
+  const [plotReadyData, setPlotReadyData] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    setError(null);
+
+    if (!data) {
+      setAvailableParameters(["temperature"]);
+      setPlotReadyData(null);
+      return;
+    }
+
+    if (has3DData(data)) {
+      setThreeDData(data);
+      setActiveTab("3d");
+      setActive3DView(data.type === "3d_ocean_plot" ? "ocean" : "parameter");
+    }
+
+    if (!validatePlotData(data)) {
+      setAvailableParameters(["temperature"]);
+      setPlotReadyData(null);
+      return;
+    }
+
+    try {
+      const params = Object.keys(data.profiles).filter((param) => {
+        const profile = data.profiles[param];
+        return (
+          profile &&
+          Array.isArray(profile.depths) &&
+          Array.isArray(profile.values) &&
+          profile.depths.length > 0 &&
+          profile.values.length > 0
+        );
+      });
+
+      if (!params.length) {
+        setError("No valid parameters were found in the current dataset.");
+        setAvailableParameters(["temperature"]);
+        setPlotReadyData(null);
+        return;
+      }
+
+      setAvailableParameters(params);
+      setActiveParameter(
+        params.includes("salinity")
+          ? "salinity"
+          : params.includes("temperature")
+            ? "temperature"
+            : params[0]
+      );
+      setPlotReadyData(data.profiles);
+    } catch (processingError) {
+      setError(`Unable to prepare plots: ${processingError.message}`);
+      setAvailableParameters(["temperature"]);
+      setPlotReadyData(null);
+    }
+  }, [data]);
+
+  const fetch3DData = async (type = "parameter") => {
+    setLoading3D(true);
+    setError(null);
+
+    try {
+      const endpoint = `/api/3d/${type === "parameter" ? "parameter-plot" : "ocean-plot"}?region=indian&limit=${type === "parameter" ? 1000 : 500}`;
+      const response = await fetch(endpoint);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const apiData = await response.json();
+      const transformed = transformApiData(apiData);
+
+      if (!transformed || !transformed.threeDData) {
+        throw new Error("The backend returned empty 3D data.");
+      }
+
+      setThreeDData(transformed);
+    } catch (fetchError) {
+      setError(`Failed to load 3D visualization data: ${fetchError.message}`);
+      setThreeDData(
+        type === "parameter"
+          ? transformApiData({ type: "3d_parameter_plot", normalData: [], anomalyData: [] })
+          : transformApiData({ type: "3d_ocean_plot", oceanData: [] })
+      );
+    } finally {
+      setLoading3D(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== "3d") return undefined;
+
+    fetch3DData(active3DView);
+    const interval = setInterval(() => fetch3DData(active3DView), 60000);
+    return () => clearInterval(interval);
+  }, [activeTab, active3DView]);
+
+  const current2DData = useMemo(() => {
+    if (plotReadyData?.[activeParameter]) {
+      return plotReadyData[activeParameter];
+    }
+
+    return sampleData[activeParameter] || sampleData.temperature;
+  }, [activeParameter, plotReadyData]);
+
+  const isReal2DData = Boolean(plotReadyData?.[activeParameter]);
+  const hasValid2DData =
+    Array.isArray(current2DData?.values) &&
+    Array.isArray(current2DData?.depths) &&
+    current2DData.values.length > 0 &&
+    current2DData.depths.length > 0;
+
+  const getParameterUnit = (parameter) => {
+    const units = {
+      temperature: "C",
+      salinity: "PSU",
+      oxygen: "umol/kg",
+      chlorophyll: "mg/m3",
+    };
+    return units[parameter] || "";
+  };
+
+  const plotConfig = useMemo(
+    () => ({
+      data: hasValid2DData
+        ? [
+            {
+              x: current2DData.values,
+              y: current2DData.depths,
+              type: "scatter",
+              mode: "lines+markers",
+              marker: {
+                color: current2DData.color,
+                size: 7,
+                symbol: isReal2DData ? "circle" : "diamond",
+                line: { color: "#04101d", width: 1 },
+              },
+              line: {
+                color: current2DData.color,
+                width: 3,
+                dash: isReal2DData ? "solid" : "dot",
+              },
+              hovertemplate:
+                "<b>Depth</b>: %{y} m<br>" +
+                `<b>${current2DData.yLabel}</b>: %{x} ${getParameterUnit(activeParameter)}<extra></extra>`,
+              name: current2DData.title,
+            },
+          ]
+        : [],
+      layout: {
+        ...plotTheme,
+        title: {
+          text: hasValid2DData
+            ? `${current2DData.title}${isReal2DData ? " - Live Data" : " - Sample Data"}`
+            : "No data available",
+          font: { family: "Space Grotesk, sans-serif", size: 18, color: "#f8fdff" },
+        },
+        xaxis: {
+          title: { text: current2DData.yLabel, font: { color: "#cce6ff" } },
+          gridcolor: "rgba(184, 214, 236, 0.16)",
+          zerolinecolor: "rgba(184, 214, 236, 0.16)",
+          color: "#cce6ff",
+        },
+        yaxis: {
+          title: { text: "Depth (m)", font: { color: "#cce6ff" } },
+          autorange: "reversed",
+          gridcolor: "rgba(184, 214, 236, 0.16)",
+          zerolinecolor: "rgba(184, 214, 236, 0.16)",
+          color: "#cce6ff",
+        },
+        hoverlabel: {
+          bgcolor: "#07192c",
+          bordercolor: "rgba(125,211,252,0.24)",
+          font: { family: "Manrope, sans-serif", color: "#f8fdff" },
+        },
+      },
+      config: {
+        displayModeBar: true,
+        displaylogo: false,
+        responsive: true,
+        modeBarButtonsToRemove: ["pan2d", "lasso2d", "select2d"],
+      },
+    }),
+    [activeParameter, current2DData, hasValid2DData, isReal2DData]
+  );
+
+  if (error && activeTab === "2d") {
+    return (
+      <div className="flex min-h-[28rem] items-center justify-center rounded-[24px] border border-rose-300/20 bg-rose-300/8 p-8 text-center">
+        <div>
+          <p className="font-display text-2xl font-semibold text-white">Plot preparation issue</p>
+          <p className="mt-3 max-w-lg text-sm leading-7 text-slate-300">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="premium-kicker">Visualization Layer</p>
+          <h3 className="mt-2 font-display text-2xl font-semibold text-white">
+            {activeTab === "2d" ? "Depth profile analysis" : "Interactive 3D exploration"}
+          </h3>
+          <p className="mt-2 text-sm leading-6 text-slate-300">
+            Move between precise 2D parameter profiles and immersive 3D structures.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-3">
+          <TabButton active={activeTab === "2d"} onClick={() => setActiveTab("2d")} icon={BarChart3}>
+            2D Profiles
+          </TabButton>
+          <TabButton
+            active={activeTab === "3d"}
+            onClick={() => {
+              setActiveTab("3d");
+              if (!threeDData) fetch3DData("parameter");
+            }}
+            icon={Globe}
+          >
+            3D Views
+          </TabButton>
+        </div>
+      </div>
+
+      {activeTab === "2d" ? (
+        <div className="space-y-5">
+          <div className="flex flex-wrap gap-3">
+            {availableParameters.map((parameter) => (
+              <button
+                key={parameter}
+                onClick={() => setActiveParameter(parameter)}
+                className={`rounded-full px-4 py-2 text-sm font-semibold transition-all ${
+                  activeParameter === parameter
+                    ? "bg-gradient-to-r from-cyan-300 to-sky-400 text-slate-950 shadow-lg"
+                    : "border border-white/10 bg-white/[0.04] text-slate-200 hover:bg-white/[0.08]"
+                }`}
+              >
+                {parameter}
+              </button>
+            ))}
+          </div>
+
+          <div className="premium-card p-2">
+            {hasValid2DData ? (
+              <Plot
+                data={plotConfig.data}
+                layout={plotConfig.layout}
+                config={plotConfig.config}
+                style={{ width: "100%", minHeight: "26rem", height: "100%" }}
+                useResizeHandler
+              />
+            ) : (
+              <div className="flex min-h-[26rem] items-center justify-center text-center">
+                <div>
+                  <p className="font-display text-2xl font-semibold text-white">
+                    No profile data available
+                  </p>
+                  <p className="mt-3 max-w-md text-sm leading-7 text-slate-300">
+                    The current payload does not contain matching depth and value arrays
+                    for this parameter.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="premium-card p-4">
+              <p className="text-sm text-slate-300">Dataset mode</p>
+              <p className="mt-2 font-display text-2xl font-semibold text-white">
+                {isReal2DData ? "Live" : "Sample"}
+              </p>
+            </div>
+            <div className="premium-card p-4">
+              <p className="text-sm text-slate-300">Selected parameter</p>
+              <p className="mt-2 font-display text-2xl font-semibold text-white">
+                {activeParameter}
+              </p>
+            </div>
+            <div className="premium-card p-4">
+              <p className="text-sm text-slate-300">Data points</p>
+              <p className="mt-2 font-display text-2xl font-semibold text-white">
+                {hasValid2DData ? current2DData.values.length : 0}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <div className="flex flex-wrap gap-3">
+            <TabButton
+              active={active3DView === "parameter"}
+              onClick={() => setActive3DView("parameter")}
+              icon={BarChart3}
+            >
+              Parameter Space
+            </TabButton>
+            <TabButton
+              active={active3DView === "ocean"}
+              onClick={() => setActive3DView("ocean")}
+              icon={Globe}
+            >
+              Ocean Geography
+            </TabButton>
+          </div>
+
+          <div className="premium-card p-2">
+            {loading3D ? (
+              <div className="flex min-h-[28rem] items-center justify-center gap-3 text-slate-200">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                Loading 3D visualization...
+              </div>
+            ) : threeDData ? (
+              <>
+                {active3DView === "parameter" && threeDData.type === "3d_parameter_plot" ? (
+                  <ThreeDScatterPlot {...extract3DParameterData(threeDData)} />
+                ) : null}
+
+                {active3DView === "ocean" && threeDData.type === "3d_ocean_plot" ? (
+                  <OceanScatter3DPlot data={extract3DOceanData(threeDData)} />
+                ) : null}
+              </>
+            ) : (
+              <div className="flex min-h-[28rem] items-center justify-center text-center">
+                <div>
+                  <Database className="mx-auto h-10 w-10 text-slate-400" />
+                  <p className="mt-4 font-display text-2xl font-semibold text-white">
+                    No 3D data loaded
+                  </p>
+                  <p className="mt-3 max-w-md text-sm leading-7 text-slate-300">
+                    Load a 3D mode above to inspect parameter clusters or ocean geography.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {error ? (
+            <div className="rounded-[24px] border border-amber-300/20 bg-amber-300/8 px-5 py-4 text-sm text-slate-200">
+              {error}
+            </div>
+          ) : null}
+
+          {threeDData?.metadata ? (
+            <div className="grid gap-4 md:grid-cols-4">
+              {Object.entries({
+                Title: threeDData.metadata.title,
+                Region: threeDData.metadata.region,
+                "Total Points": threeDData.metadata.total_points,
+                "Normal Count":
+                  threeDData.metadata.normal_count ?? threeDData.metadata.anomaly_count,
+              }).map(([label, value]) => (
+                <div key={label} className="premium-card p-4">
+                  <p className="text-sm text-slate-300">{label}</p>
+                  <p className="mt-2 font-display text-xl font-semibold text-white">
+                    {value ?? "-"}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}

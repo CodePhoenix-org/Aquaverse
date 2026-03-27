@@ -1,186 +1,181 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { PaperAirplaneIcon, SparklesIcon } from '@heroicons/react/24/outline';
-import { Send, Bot, User, Loader2, X } from 'lucide-react';
-import axios from 'axios';
+import { useEffect, useRef, useState } from "react";
+import { Bot, Loader2, Send, Sparkles, User } from "lucide-react";
+import axios from "axios";
+import AppLogo from "../ui/AppLogo";
 
-const ChatInterface = ({ onDataReceived, onCloseChat }) => {
+const quickActions = [
+  "Show temperature profiles in the Indian Ocean",
+  "Find floats in the Pacific",
+  "Compare salinity data",
+  "Open a map of recent float activity",
+];
+
+export default function ChatInterface({ onDataReceived, onCloseChat }) {
   const [messages, setMessages] = useState([
     {
       id: 1,
-      type: 'bot',
+      type: "bot",
       content:
-        'Welcome to FloatChat! I can help you explore ARGO ocean data. Try asking me something like "Show me salinity profiles near the equator in March 2023"',
+        'Welcome to FloatChat. Ask for ocean profiles, map views, comparisons, or anomaly-focused visuals, and I will route the result into the dashboard.',
       timestamp: new Date(),
     },
   ]);
-  const [inputValue, setInputValue] = useState('');
+  const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [lastVizData, setLastVizData] = useState(null);
-  const [lastVizTab, setLastVizTab] = useState(null);
   const messagesEndRef = useRef(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleSendMessage = async () => {
-  // Debug: log input value
-  console.log('Sending query:', inputValue);
     if (!inputValue.trim() || isLoading) return;
 
     const userMessage = {
       id: Date.now(),
-      type: 'user',
+      type: "user",
       content: inputValue,
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInputValue('');
+    setMessages((current) => [...current, userMessage]);
+    setInputValue("");
     setIsLoading(true);
 
     try {
-      // Send POST request to your backend API
-      const response = await axios.post('http://127.0.0.1:8000/chat/query', {
-        query: inputValue
+      const response = await axios.post("http://127.0.0.1:8000/chat/query", {
+        query: inputValue,
       });
-      // Debug: log full response
-      console.log('Full response:', response);
-      console.log('Response data:', response.data);
-      console.log('Type of response data:', typeof response.data);
 
-      // Extract the message properly
-      let messageContent = '';
+      let messageContent = "";
       let responseData = null;
-      let vizTab = null;
 
-      // Handle both array and object responses
       if (Array.isArray(response.data)) {
-        // This is the array format you're currently getting
-        messageContent = response.data[0] || '⚠️ No response';
+        messageContent = response.data[0] || "No response received.";
         responseData = response.data[1] || null;
-      } else if (typeof response.data === 'object') {
-        // This is the proper object format
-        messageContent = response.data.message || response.data.answer || '⚠️ No response';
+      } else if (typeof response.data === "object") {
+        messageContent =
+          response.data.message || response.data.answer || "No response received.";
         responseData = response.data.data || null;
       } else {
-        // Fallback for unexpected formats
         messageContent = String(response.data);
       }
 
-      // Determine visualization tab based on data type
-      if (responseData && responseData.type) {
-        if (responseData.type.includes('profile')) vizTab = 'plots';
-        else if (responseData.type.includes('map')) vizTab = 'map';
-        else if (responseData.type.includes('comparison')) vizTab = 'comparison';
-        else if (responseData.type.includes('table')) vizTab = 'table';
-      }
-
-      // Store visualization data for the "View Visualization" button
       setLastVizData(responseData);
-      setLastVizTab(vizTab);
-
-      const botMessage = {
-        id: Date.now() + 1,
-        type: 'bot',
-        content: messageContent,
-        data: responseData,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, botMessage]);
+      setMessages((current) => [
+        ...current,
+        {
+          id: Date.now() + 1,
+          type: "bot",
+          content: messageContent,
+          data: responseData,
+          timestamp: new Date(),
+        },
+      ]);
 
       if (responseData) {
         onDataReceived(responseData);
       }
     } catch (error) {
-      console.error('API Error:', error);
-      const errorMessage = {
-        id: Date.now() + 1,
-        type: 'bot',
-        content: 'Sorry, I encountered an error processing your request. Please try again.',
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((current) => [
+        ...current,
+        {
+          id: Date.now() + 1,
+          type: "bot",
+          content: "I hit an error while processing that request. Please try again.",
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
+  const handleKeyPress = (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
       handleSendMessage();
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-gradient-to-br from-gray-50 to-white">
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-6 scrollbar-thin">
+    <div className="flex h-full flex-col bg-transparent">
+      <div className="border-b border-white/10 px-5 py-4">
+        <div className="flex items-center gap-4">
+          <AppLogo size="md" alt="AquaVerse chat logo" />
+          <div>
+            <p className="premium-kicker">FloatChat</p>
+            <h3 className="mt-2 font-display text-2xl font-semibold text-white">
+              Conversational ocean analysis
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-slate-300">
+              Ask a question and route the answer into maps, plots, or comparison views.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5 scrollbar-thin">
         {messages.map((message, index) => {
-          const isLastBotMsg = 
-            message.type === 'bot' && 
-            index === messages.length - 1 && 
-            lastVizData;
-          
+          const isLastBotMessage =
+            message.type === "bot" && index === messages.length - 1 && lastVizData;
+
           return (
             <div
               key={message.id}
-              className={`flex ${
-                message.type === 'user' ? 'justify-end' : 'justify-start'
-              }`}
+              className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}
             >
-              <div className={`flex items-start gap-3 max-w-[80%] ${
-                message.type === 'user' ? 'flex-row-reverse' : 'flex-row'
-              }`}>
-                {/* Avatar */}
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  message.type === 'user' 
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-600' 
-                    : 'bg-gradient-to-r from-emerald-500 to-emerald-600'
-                }`}>
-                  {message.type === 'user' ? (
-                    <User className="w-4 h-4 text-white" />
+              <div
+                className={`flex max-w-[90%] items-start gap-3 ${
+                  message.type === "user" ? "flex-row-reverse" : ""
+                }`}
+              >
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-2xl ${
+                    message.type === "user"
+                      ? "bg-gradient-to-br from-cyan-300 to-sky-400 text-slate-950"
+                      : "border border-white/10 bg-white/[0.08] text-cyan-100"
+                  }`}
+                >
+                  {message.type === "user" ? (
+                    <User className="h-4 w-4" />
                   ) : (
-                    <Bot className="w-4 h-4 text-white" />
+                    <Bot className="h-4 w-4" />
                   )}
                 </div>
-                
-                {/* Message Bubble */}
-                <div className={`px-4 py-3 rounded-2xl shadow-sm ${
-                  message.type === 'user'
-                    ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white'
-                    : 'bg-white text-gray-800 border border-gray-200'
-                }`}>
-                  <p className="text-sm leading-relaxed">
-                    {typeof message.content === 'string'
-                      ? message.content
-                      : JSON.stringify(message.content)}
-                  </p>
-                  
-                  {/* View Visualization Button */}
-                  {isLastBotMsg && (
+
+                <div
+                  className={`rounded-[24px] px-4 py-4 shadow-ocean ${
+                    message.type === "user"
+                      ? "bg-gradient-to-br from-cyan-300 to-sky-400 text-slate-950"
+                      : "border border-white/10 bg-white/[0.05] text-slate-100"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap text-sm leading-7">{message.content}</p>
+
+                  {isLastBotMessage ? (
                     <button
                       onClick={() => {
                         onDataReceived(lastVizData);
-                        onCloseChat && onCloseChat();
+                        onCloseChat?.();
                       }}
-                      className="mt-3 px-4 py-2 bg-gradient-to-r from-emerald-500 to-blue-600 text-white rounded-xl shadow hover:scale-105 transition-all duration-200 flex items-center gap-2 text-sm font-medium"
+                      className="mt-4 premium-button-secondary px-4 py-2 text-xs"
                     >
-                      <Bot className="w-4 h-4" />
-                      View Visualization
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Open in Dashboard
                     </button>
-                  )}
-                  
-                  <p className={`text-xs mt-2 ${
-                    message.type === 'user' ? 'text-blue-100' : 'text-gray-500'
-                  }`}>
-                    {message.timestamp.toLocaleTimeString()}
+                  ) : null}
+
+                  <p
+                    className={`mt-3 text-xs ${
+                      message.type === "user" ? "text-slate-900/70" : "text-slate-400"
+                    }`}
+                  >
+                    {message.timestamp.toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </p>
                 </div>
               </div>
@@ -188,76 +183,56 @@ const ChatInterface = ({ onDataReceived, onCloseChat }) => {
           );
         })}
 
-        {isLoading && (
+        {isLoading ? (
           <div className="flex justify-start">
             <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-600 flex items-center justify-center">
-                <Bot className="w-4 h-4 text-white" />
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.08] text-cyan-100">
+                <Bot className="h-4 w-4" />
               </div>
-              <div className="bg-white px-4 py-3 rounded-2xl shadow-sm border border-gray-200">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
-                  <span className="text-sm text-gray-600">Analyzing your request...</span>
+              <div className="rounded-[24px] border border-white/10 bg-white/[0.05] px-4 py-4 text-slate-200">
+                <div className="flex items-center gap-2 text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Analyzing your query...
                 </div>
               </div>
             </div>
           </div>
-        )}
+        ) : null}
 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
-      <div className="border-t border-gray-200 bg-white p-4">
-        <div className="flex gap-3">
-          <div className="flex-1 relative">
-            <textarea
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Ask about ARGO ocean data... (e.g., 'Show temperature profiles in the Indian Ocean')"
-              className="w-full border border-gray-300 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-gray-900 placeholder:text-gray-400 bg-gray-50 hover:bg-white transition-colors duration-200"
-              rows="2"
-              disabled={isLoading}
-            />
-            <div className="absolute bottom-2 right-2 text-xs text-gray-400">
-              Press Enter to send
-            </div>
-          </div>
-          <button
-            onClick={handleSendMessage}
-            disabled={!inputValue.trim() || isLoading}
-            className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-4 py-3 rounded-xl hover:from-emerald-600 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center min-w-[48px] shadow-sm hover:shadow-md"
-          >
-            {isLoading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Send className="h-5 w-5" />
-            )}
-          </button>
-        </div>
-        
-        {/* Quick Actions */}
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className="text-xs text-gray-500">Quick actions:</span>
-          {[
-            "Show temperature profiles",
-            "Find floats in Pacific",
-            "Compare salinity data",
-            "Map view of recent data"
-          ].map((action, index) => (
+      <div className="border-t border-white/10 px-5 py-5">
+        <div className="mb-3 flex flex-wrap gap-2">
+          {quickActions.map((action) => (
             <button
-              key={index}
+              key={action}
               onClick={() => setInputValue(action)}
-              className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors duration-200"
+              className="premium-chip rounded-full px-3 py-2 text-left"
             >
               {action}
             </button>
           ))}
         </div>
+
+        <div className="flex gap-3">
+          <textarea
+            value={inputValue}
+            onChange={(event) => setInputValue(event.target.value)}
+            onKeyDown={handleKeyPress}
+            placeholder="Ask FloatChat for a map, profile, comparison, or anomaly insight..."
+            className="premium-input min-h-[5.5rem] flex-1 resize-none"
+            disabled={isLoading}
+          />
+          <button
+            onClick={handleSendMessage}
+            disabled={!inputValue.trim() || isLoading}
+            className="premium-button h-fit disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
-
-export default ChatInterface;

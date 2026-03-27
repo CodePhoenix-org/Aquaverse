@@ -1,121 +1,87 @@
-// import React from "react";
-// import Plot from "react-plotly.js";
-
-// // Expects props: normalData, anomalyData each array of objects { Temperature, Salinity, Oxygen }
-// const ThreeDScatterPlot = ({ normalData, anomalyData }) => {
-//   return (
-//     <Plot
-//       data={[
-//         {
-//           x: normalData.map(d => d.Temperature),
-//           y: normalData.map(d => d.Salinity),
-//           z: normalData.map(d => d.Oxygen),
-//           mode: "markers",
-//           type: "scatter3d",
-//           marker: {
-//             size: 5,
-//             color: "blue",
-//             symbol: "circle",
-//             opacity: 0.8
-//           },
-//           name: "Normal"
-//         },
-//         {
-//           x: anomalyData.map(d => d.Temperature),
-//           y: anomalyData.map(d => d.Salinity),
-//           z: anomalyData.map(d => d.Oxygen),
-//           mode: "markers",
-//           type: "scatter3d",
-//           marker: {
-//             size: 7,
-//             color: "red",
-//             symbol: "diamond",
-//             opacity: 0.8
-//           },
-//           name: "Anomaly"
-//         }
-//       ]}
-//       layout={{
-//         title: "3D: Temperature (x), Salinity (y), Oxygen (z), Anomaly (Color/Symbol)",
-//         scene: {
-//           xaxis: { title: "Temperature (°C)" },
-//           yaxis: { title: "Salinity" },
-//           zaxis: { title: "Oxygen" }
-//         },
-//         height: 700
-//       }}
-//       config={{ displayModeBar: true }}
-//       style={{ width: "100%", height: "700px" }}
-//     />
-//   );
-// };
-// export default ThreeDScatterPlot;
-
-
-
-
-
-
-import React from "react";
 import Plot from "react-plotly.js";
 
-const ThreeDScatterPlot = ({ normalData, anomalyData }) => {
+export default function ThreeDScatterPlot({ normalData = [], anomalyData = [] }) {
   return (
     <Plot
       data={[
         {
-          x: normalData.map(d => d.Temperature),
-          y: normalData.map(d => d.Salinity),
-          z: normalData.map(d => d.Oxygen),
+          x: normalData.map((item) => item.Temperature),
+          y: normalData.map((item) => item.Salinity),
+          z: normalData.map((item) => item.Oxygen),
           mode: "markers",
           type: "scatter3d",
           marker: {
-            size: normalData.map(d => Math.max(4, (d.Temperature - 2.728) / (31.018 - 2.728) * 10)), // Scale size by temp
-            color: "#1E90FF",
+            size: normalData.map((item) =>
+              Math.max(4, ((item.Temperature - 2.728) / (31.018 - 2.728)) * 10)
+            ),
+            color: "#7fe7ff",
             symbol: "circle",
             opacity: 0.85,
-            line: { color: "#4169E1", width: 1 },
+            line: { color: "#0f172a", width: 1 },
           },
           name: "Normal",
-          hovertemplate: "Temp: %{x}°C<br>Sal: %{y} PSU<br>Oxy: %{z} μmol/kg<br>Status: Normal"
+          hovertemplate:
+            "Temp: %{x} C<br>Salinity: %{y} PSU<br>Oxygen: %{z} umol/kg<br>Status: Normal<extra></extra>",
         },
         {
-          x: anomalyData.map(d => d.Temperature),
-          y: anomalyData.map(d => d.Salinity),
-          z: anomalyData.map(d => d.Oxygen),
+          x: anomalyData.map((item) => item.Temperature),
+          y: anomalyData.map((item) => item.Salinity),
+          z: anomalyData.map((item) => item.Oxygen),
           mode: "markers",
           type: "scatter3d",
           marker: {
-            size: anomalyData.map(d => Math.max(6, (d.Temperature - 2.728) / (31.018 - 2.728) * 12)),
-            color: "#FF4500",
+            size: anomalyData.map((item) =>
+              Math.max(6, ((item.Temperature - 2.728) / (31.018 - 2.728)) * 12)
+            ),
+            color: "#f59e7c",
             symbol: "diamond",
-            opacity: 0.9,
-            line: { color: "#B22222", width: 2 },
+            opacity: 0.95,
+            line: { color: "#0f172a", width: 1.5 },
           },
           name: "Anomaly",
-          hovertemplate: "Temp: %{x}°C<br>Sal: %{y} PSU<br>Oxy: %{z} μmol/kg<br>Status: Anomaly"
-        }
+          hovertemplate:
+            "Temp: %{x} C<br>Salinity: %{y} PSU<br>Oxygen: %{z} umol/kg<br>Status: Anomaly<extra></extra>",
+        },
       ]}
       layout={{
-        title: "3D Parameter Space: Temp vs Sal vs Oxy",
-        scene: {
-          xaxis: { title: "Temperature (°C)", range: [2, 32], backgroundcolor: "#F0F8FF", gridcolor: "#A9CDEF" },
-          yaxis: { title: "Salinity (PSU)", range: [33.5, 36.6], backgroundcolor: "#F0F8FF", gridcolor: "#A9CDEF" },
-          zaxis: { title: "Oxygen (μmol/kg)", backgroundcolor: "#F0F8FF", gridcolor: "#A9CDEF" },
-          bgcolor: "#E0FFFF",
-          aspectmode: "cube",
-          camera: { eye: { x: 1.5, y: 1.5, z: 1.5 } },
-          dragmode: "orbit"
+        title: {
+          text: "3D Parameter Space",
+          font: { family: "Space Grotesk, sans-serif", color: "#f8fdff", size: 18 },
         },
-        legend: { x: 0, y: 1, bgcolor: "rgba(255,255,255,0.8)" },
+        paper_bgcolor: "rgba(7,24,42,0)",
+        scene: {
+          bgcolor: "rgba(7,24,42,0)",
+          xaxis: {
+            title: "Temperature (C)",
+            color: "#d9ecff",
+            gridcolor: "rgba(184,214,236,0.16)",
+            backgroundcolor: "rgba(8, 25, 44, 0.45)",
+          },
+          yaxis: {
+            title: "Salinity (PSU)",
+            color: "#d9ecff",
+            gridcolor: "rgba(184,214,236,0.16)",
+            backgroundcolor: "rgba(8, 25, 44, 0.45)",
+          },
+          zaxis: {
+            title: "Oxygen (umol/kg)",
+            color: "#d9ecff",
+            gridcolor: "rgba(184,214,236,0.16)",
+            backgroundcolor: "rgba(8, 25, 44, 0.45)",
+          },
+          camera: { eye: { x: 1.5, y: 1.5, z: 1.25 } },
+          dragmode: "orbit",
+        },
+        legend: {
+          bgcolor: "rgba(7,24,42,0.55)",
+          bordercolor: "rgba(125,211,252,0.16)",
+          font: { color: "#d9ecff" },
+        },
         margin: { l: 0, r: 0, b: 0, t: 40 },
         height: 700,
-        annotations: [{ text: "Anomalies in red", xref: "paper", yref: "paper", x: 0.05, y: 0.05, showarrow: false, font: { color: "#666" } }]
       }}
       config={{ displayModeBar: true, responsive: true, scrollZoom: true }}
       style={{ width: "100%", height: "700px" }}
     />
   );
-};
-
-export default ThreeDScatterPlot;
+}

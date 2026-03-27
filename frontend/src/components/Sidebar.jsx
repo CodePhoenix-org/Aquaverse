@@ -1,19 +1,36 @@
 import { useState } from "react";
-import { CalendarDaysIcon, BeakerIcon, MapPinIcon, HashtagIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
-import { 
-  Filter, 
-  TrendingUp, 
-  Activity, 
-  Globe, 
-  Database,
-  BarChart3,
-  Map,
+import {
+  CalendarDaysIcon,
+  HashtagIcon,
+  MapPinIcon,
+} from "@heroicons/react/24/outline";
+import {
+  Activity,
+  Filter,
+  Globe,
+  RotateCcw,
+  Sparkles,
   Thermometer,
-  Droplets,
-  Wind
-} from 'lucide-react';
+  Waves,
+} from "lucide-react";
 
-function Sidebar({ onApply }) {
+const variableOptions = [
+  { value: "", label: "All variables" },
+  { value: "temperature", label: "Temperature" },
+  { value: "salinity", label: "Salinity" },
+  { value: "oxygen", label: "Oxygen" },
+  { value: "bgc", label: "BGC" },
+];
+
+const regionOptions = [
+  { value: "", label: "All regions" },
+  { value: "north-atlantic", label: "North Atlantic" },
+  { value: "pacific", label: "Pacific" },
+  { value: "indian", label: "Indian Ocean" },
+  { value: "southern", label: "Southern Ocean" },
+];
+
+export default function Sidebar({ onApply }) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [variable, setVariable] = useState("");
@@ -24,147 +41,150 @@ function Sidebar({ onApply }) {
     onApply?.({ dateFrom, dateTo, variable, region, floatId });
   };
 
+  const clearFilters = () => {
+    setDateFrom("");
+    setDateTo("");
+    setVariable("");
+    setRegion("");
+    setFloatId("");
+  };
+
   return (
-    <aside className="w-full lg:w-72 text-white bg-white/10 border border-white/20 rounded-2xl p-0 h-fit lg:sticky top-8 self-start shadow-lg hover:shadow-xl transition-all duration-300 relative z-20 pointer-events-auto">
-      <div className="bg-gradient-to-b from-slate-900/70 to-slate-800/60 rounded-2xl ring-0 overflow-hidden">
-        {/* Header */}
-        <div className="px-4 py-4 border-b border-white/10 bg-gradient-to-r from-emerald-500/10 to-blue-500/10">
-          <div className="flex items-center gap-2 mb-2">
-            <Filter className="w-5 h-5 text-emerald-400" />
-            <h2 className="text-sm uppercase tracking-wide text-emerald-300 font-semibold">Data Filters</h2>
+    <aside className="premium-panel premium-panel-strong h-fit overflow-hidden lg:sticky lg:top-28">
+      <div className="border-b border-white/10 bg-white/[0.03] px-5 py-5">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-300/16 bg-cyan-300/10">
+            <Filter className="h-5 w-5 text-cyan-100" />
           </div>
-          <p className="text-xs text-blue-200">Refine your ocean data exploration</p>
+          <div>
+            <p className="premium-kicker">Control Panel</p>
+            <h2 className="mt-1 font-display text-xl font-semibold text-white">
+              Refine the signal
+            </h2>
+          </div>
         </div>
+        <p className="mt-4 text-sm leading-6 text-slate-300">
+          Tighten the ocean lens before you map, chart, compare, or export.
+        </p>
+      </div>
 
-        <div className="p-4 space-y-4">
-          {/* Date Range */}
-          <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-            <label className="flex items-center gap-2 text-xs text-blue-200 mb-3 font-medium">
-              <CalendarDaysIcon className="w-4 h-4" /> Date Range
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-              <input 
-                type="date" 
-                value={dateFrom} 
-                onChange={(e)=>setDateFrom(e.target.value)} 
-                className="bg-slate-900/80 border border-white/20 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-400 outline-none text-sm hover:border-white/30 transition-colors duration-200" 
-              />
-              <input 
-                type="date" 
-                value={dateTo} 
-                onChange={(e)=>setDateTo(e.target.value)} 
-                className="bg-slate-900/80 border border-white/20 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-400 outline-none text-sm hover:border-white/30 transition-colors duration-200" 
-              />
-            </div>
-          </div>
-
-          {/* Variable */}
-          <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-            <label className="flex items-center gap-2 text-xs text-blue-200 mb-3 font-medium">
-              <BeakerIcon className="w-4 h-4" /> Ocean Variables
-            </label>
-            <select 
-              value={variable} 
-              onChange={(e)=>setVariable(e.target.value)} 
-              className="w-full bg-slate-900/80 text-white border border-white/20 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-400 outline-none text-sm hover:border-white/30 transition-colors duration-200"
-            >
-              <option value="">Select variable</option>
-              <option className="text-slate-900" value="temperature">🌡️ Temperature</option>
-              <option className="text-slate-900" value="salinity">🧂 Salinity</option>
-              <option className="text-slate-900" value="oxygen">💨 Oxygen</option>
-              <option className="text-slate-900" value="bgc">🔬 BGC</option>
-            </select>
-          </div>
-
-          {/* Region */}
-          <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-            <label className="flex items-center gap-2 text-xs text-blue-200 mb-3 font-medium">
-              <MapPinIcon className="w-4 h-4" /> Ocean Regions
-            </label>
-            <select 
-              value={region} 
-              onChange={(e)=>setRegion(e.target.value)} 
-              className="w-full bg-slate-900/80 text-white border border-white/20 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-400 outline-none text-sm hover:border-white/30 transition-colors duration-200"
-            >
-              <option value="">Select region</option>
-              <option className="text-slate-900" value="north-atlantic">🌊 North Atlantic</option>
-              <option className="text-slate-900" value="pacific">🌊 Pacific</option>
-              <option className="text-slate-900" value="indian">🌊 Indian Ocean</option>
-              <option className="text-slate-900" value="southern">🌊 Southern Ocean</option>
-            </select>
-          </div>
-
-          {/* Float ID */}
-          <div className="bg-white/5 rounded-lg p-3 border border-white/10">
-            <label className="flex items-center gap-2 text-xs text-blue-200 mb-3 font-medium">
-              <HashtagIcon className="w-4 h-4" /> Float ID
-            </label>
-            <input 
-              value={floatId} 
-              onChange={(e)=>setFloatId(e.target.value)} 
-              placeholder="Search Float ID" 
-              className="w-full bg-slate-900/80 border border-white/20 rounded-lg px-3 py-2 focus:ring-2 focus:ring-emerald-400 outline-none placeholder-blue-300/70 text-sm hover:border-white/30 transition-colors duration-200" 
+      <div className="space-y-5 px-5 py-5">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <label className="space-y-2">
+            <span className="flex items-center gap-2 text-sm font-medium text-slate-200">
+              <CalendarDaysIcon className="h-4 w-4" />
+              Start date
+            </span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
+              className="premium-input"
             />
-          </div>
+          </label>
 
-          {/* Action Buttons */}
-          <div className="flex gap-2 pt-2">
-            <button 
-              onClick={apply} 
-              className="flex-1 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-fuchsia-500 hover:from-emerald-400 hover:to-fuchsia-400 shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center gap-2 text-sm font-medium"
-            >
-              <Filter className="w-4 h-4" />
-              Apply Filters
-            </button>
-            <button 
-              onClick={()=>{setDateFrom('');setDateTo('');setVariable('');setRegion('');setFloatId('');}} 
-              className="px-4 py-3 rounded-lg bg-white/10 hover:bg-white/20 ring-1 ring-white/10 hover:ring-white/20 transition-all duration-200" 
-              title="Clear filters"
-            >
-              <ArrowPathIcon className="w-4 h-4" />
-            </button>
-          </div>
+          <label className="space-y-2">
+            <span className="flex items-center gap-2 text-sm font-medium text-slate-200">
+              <CalendarDaysIcon className="h-4 w-4" />
+              End date
+            </span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+              className="premium-input"
+            />
+          </label>
         </div>
 
-        {/* Quick Stats Section */}
-        <div className="border-t border-white/10 bg-gradient-to-r from-blue-500/10 to-purple-500/10 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <TrendingUp className="w-4 h-4 text-blue-400" />
-            <h3 className="text-xs uppercase tracking-wide text-blue-300 font-semibold">Quick Stats</h3>
+        <label className="space-y-2">
+          <span className="flex items-center gap-2 text-sm font-medium text-slate-200">
+            <Thermometer className="h-4 w-4" />
+            Variable
+          </span>
+          <select
+            value={variable}
+            onChange={(event) => setVariable(event.target.value)}
+            className="premium-select"
+          >
+            {variableOptions.map((option) => (
+              <option key={option.value || "all"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="space-y-2">
+          <span className="flex items-center gap-2 text-sm font-medium text-slate-200">
+            <MapPinIcon className="h-4 w-4" />
+            Region
+          </span>
+          <select
+            value={region}
+            onChange={(event) => setRegion(event.target.value)}
+            className="premium-select"
+          >
+            {regionOptions.map((option) => (
+              <option key={option.value || "all"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="space-y-2">
+          <span className="flex items-center gap-2 text-sm font-medium text-slate-200">
+            <HashtagIcon className="h-4 w-4" />
+            Float ID
+          </span>
+          <input
+            value={floatId}
+            onChange={(event) => setFloatId(event.target.value)}
+            placeholder="Search by float identifier"
+            className="premium-input"
+          />
+        </label>
+
+        <div className="flex gap-3">
+          <button onClick={apply} className="premium-button flex-1">
+            <Sparkles className="h-4 w-4" />
+            Apply
+          </button>
+          <button onClick={clearFilters} className="premium-button-secondary">
+            <RotateCcw className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="border-t border-white/10 bg-white/[0.03] px-5 py-5">
+        <p className="premium-kicker">Live Summary</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+          <div className="premium-card p-4">
+            <div className="flex items-center gap-2 text-sm text-slate-300">
+              <Activity className="h-4 w-4 text-emerald-300" />
+              Active floats
+            </div>
+            <p className="mt-3 font-display text-3xl font-bold text-white">3,847</p>
           </div>
-          
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white/5 rounded-lg p-2 border border-white/10">
-              <div className="flex items-center gap-1 mb-1">
-                <Activity className="w-3 h-3 text-emerald-400" />
-                <span className="text-xs text-emerald-300 font-medium">Active</span>
-              </div>
-              <p className="text-lg font-bold text-emerald-300">3,847</p>
-              <p className="text-xs text-emerald-200">Floats</p>
+
+          <div className="premium-card p-4">
+            <div className="flex items-center gap-2 text-sm text-slate-300">
+              <Globe className="h-4 w-4 text-sky-300" />
+              Coverage
             </div>
-            
-            <div className="bg-white/5 rounded-lg p-2 border border-white/10">
-              <div className="flex items-center gap-1 mb-1">
-                <Globe className="w-3 h-3 text-blue-400" />
-                <span className="text-xs text-blue-300 font-medium">Coverage</span>
-              </div>
-              <p className="text-lg font-bold text-blue-300">78%</p>
-              <p className="text-xs text-blue-200">Global</p>
-            </div>
+            <p className="mt-3 font-display text-3xl font-bold text-white">78%</p>
           </div>
-          
-          <div className="mt-3 pt-3 border-t border-white/10">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-blue-200">Recent Activity</span>
-              <span className="text-emerald-300 font-medium">+156 profiles</span>
+
+          <div className="premium-card p-4">
+            <div className="flex items-center gap-2 text-sm text-slate-300">
+              <Waves className="h-4 w-4 text-cyan-300" />
+              Fresh profiles
             </div>
+            <p className="mt-3 font-display text-3xl font-bold text-white">+156</p>
           </div>
         </div>
       </div>
     </aside>
   );
 }
-
-export default Sidebar;
-
-

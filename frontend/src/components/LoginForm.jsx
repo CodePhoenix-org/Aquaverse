@@ -1,20 +1,20 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import axios from "axios";
-import { Eye, EyeOff, Mail, Lock, ArrowRight } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/Authcontext"; 
-import { toast } from "react-toastify"; 
+import { toast } from "react-toastify";
+import { useAuth } from "../context/Authcontext";
 
-const LoginForm = () => {
+export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
-  const { login } = useAuth(); 
+  const { login } = useAuth();
 
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm();
 
   const onSubmit = async (data) => {
@@ -24,91 +24,81 @@ const LoginForm = () => {
         password: data.password,
       });
 
-      // Store token
       localStorage.setItem("auth_token", res.data.access_token);
-
-      // Store user object (ensure API returns user info)
-      const userData = res.data.user || res.data; 
+      const userData = res.data.user || res.data;
       localStorage.setItem("user", JSON.stringify(userData));
-
-      // Update AuthContext
       login(userData);
 
-      // ✅ Show success toast
-      toast.success("🎉 Login successful! Welcome back.", {
-        position: "top-right",
-        autoClose: 2500,
-      });
-
-      navigate("/floatchat");
-    } catch (err) {
-      // ❌ Show error toast
-      toast.error(err.response?.data?.detail || "Login failed!", {
-        position: "top-right",
-        autoClose: 2500,
-      });
+      toast.success("Login successful. Your ocean workspace is ready.");
+      navigate("/dashboard");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Login failed. Please try again.");
     }
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      {/* Email */}
-      <div className="relative group">
-        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
-        <input
-          {...register("email", {
-            required: "Email is required",
-            pattern: {
-              value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
-              message: "Invalid email address",
-            },
-          })}
-          type="email"
-          placeholder="Email Address"
-          className="w-full pl-12 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-        />
-        {errors.email && (
-          <span className="text-red-500 text-xs">{errors.email.message}</span>
-        )}
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-slate-200">Email</label>
+        <div className="relative">
+          <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <input
+            {...register("email", {
+              required: "Email is required",
+              pattern: {
+                value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+                message: "Enter a valid email address",
+              },
+            })}
+            type="email"
+            placeholder="you@aquaverse.ai"
+            className="premium-input pl-12"
+          />
+        </div>
+        {errors.email ? (
+          <p className="text-sm text-rose-300">{errors.email.message}</p>
+        ) : null}
       </div>
 
-      {/* Password */}
-      <div className="relative group">
-        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
-        <input
-          {...register("password", {
-            required: "Password is required",
-            minLength: {
-              value: 6,
-              message: "Password must be at least 6 characters",
-            },
-          })}
-          type={showPassword ? "text" : "password"}
-          placeholder="Password"
-          className="w-full pl-12 pr-12 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-        />
-        <button
-          type="button"
-          onClick={() => setShowPassword(!showPassword)}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-300 hover:text-cyan-400"
-        >
-          {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-        </button>
-        {errors.password && (
-          <span className="text-red-500 text-xs">{errors.password.message}</span>
-        )}
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-slate-200">Password</label>
+        <div className="relative">
+          <Lock className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <input
+            {...register("password", {
+              required: "Password is required",
+              minLength: {
+                value: 6,
+                message: "Password must be at least 6 characters",
+              },
+            })}
+            type={showPassword ? "text" : "password"}
+            placeholder="Enter your password"
+            className="premium-input pl-12 pr-12"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((value) => !value)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-white"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+          </button>
+        </div>
+        {errors.password ? (
+          <p className="text-sm text-rose-300">{errors.password.message}</p>
+        ) : null}
       </div>
 
-      {/* Submit */}
-      <button
-        type="submit"
-        className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold rounded-xl shadow-lg transform hover:scale-105 transition-all flex items-center justify-center group"
-      >
-        Dive In
-        <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm text-slate-300">
+        Your credentials unlock the premium dashboard, FloatChat, profile history,
+        and anomaly analysis workspace.
+      </div>
+
+      <button type="submit" disabled={isSubmitting} className="premium-button w-full">
+        {isSubmitting ? "Signing in..." : "Enter AquaVerse"}
+        <ArrowRight className="h-4 w-4" />
       </button>
     </form>
   );
-};
-
-export default LoginForm;
+}

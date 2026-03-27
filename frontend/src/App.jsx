@@ -3,7 +3,6 @@ import {
   Routes,
   Route,
   Navigate,
-  useParams,
 } from "react-router-dom";
 import AuthPage from "./Pages/AuthPage";
 import Dashboard from "./components/Dashboard";
@@ -17,10 +16,8 @@ import Home from "./components/Home";
 import "./i18n";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { useEffect } from "react";
 import ArgoGlobe from "./components/maps/ArgoGlobe";
 function App() {
-  console.log("App.jsx loaded"); // Debugging to confirm file is loaded
   return (
     <AuthProvider>
       <Router>
@@ -48,13 +45,12 @@ function App() {
           position="top-right"
           autoClose={3000}
           hideProgressBar={false}
-          newestOnTop={true}
+          newestOnTop
           closeOnClick
-          rtl={false}
           pauseOnFocusLoss
           draggable
           pauseOnHover
-          theme="colored"
+          theme="dark"
         />
       </Router>
     </AuthProvider>

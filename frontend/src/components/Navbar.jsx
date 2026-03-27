@@ -1,113 +1,135 @@
-import { Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import {
-  LogOut,
-  User,
   History as HistoryIcon,
+  LayoutDashboard,
+  LogOut,
+  Menu,
   MessageCircle,
+  Sparkles,
+  User,
+  Waves,
+  X,
 } from "lucide-react";
-const Navbar = ({ onOpenChat }) => {
+import { useAuth } from "../context/Authcontext";
+import BrandMark from "./ui/BrandMark";
+
+const navItems = [
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/floatchat", label: "FloatChat", icon: MessageCircle },
+  { to: "/predict", label: "Predictor", icon: Sparkles },
+  { to: "/history", label: "History", icon: HistoryIcon },
+  { to: "/profile", label: "Profile", icon: User },
+  { to: "/visuals", label: "3D Globe", icon: Waves },
+];
+
+export default function Navbar({ onOpenChat }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { logout } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleLogout = () => {
-    try {
-      localStorage.removeItem("auth_token");
-      localStorage.removeItem("user");
-      console.log("User logged out successfully");
-
-      toast.success("✅ Successfully logged out!", {
-        position: "top-right",
-        autoClose: 2500,
-      });
-    } catch (err) {
-      console.error("Error during logout:", err);
-      toast.error("❌ Error during logout. Try again.", {
-        position: "top-right",
-        autoClose: 2500,
-      });
-    }
-
-    navigate("/"); 
+    logout();
+    toast.success("You have been logged out.");
+    navigate("/home");
   };
 
   return (
-    <header className="w-full bg-gradient-to-r from-slate-900 via-blue-900 to-cyan-900 text-white shadow-xl">
-      <div className="max-w-7xl mx-auto px-4 lg:px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center">
-            <span className="text-xl">🌊</span>
+    <header className="sticky top-0 z-40 px-4 pt-4 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1400px]">
+        <div className="premium-panel premium-panel-strong flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
+          <Link to="/home" className="shrink-0">
+            <BrandMark compact={location.pathname !== "/home"} />
+          </Link>
+
+          <nav className="hidden min-w-0 items-center gap-2 xl:flex">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const active = location.pathname === item.to;
+
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-all ${
+                    active
+                      ? "bg-white/10 text-white shadow-lg shadow-cyan-500/10"
+                      : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          <div className="hidden items-center gap-3 xl:flex">
+            {onOpenChat ? (
+              <button onClick={onOpenChat} className="premium-button-secondary">
+                <MessageCircle className="h-4 w-4" />
+                Open Chat
+              </button>
+            ) : null}
+            <button onClick={handleLogout} className="premium-button">
+              <LogOut className="h-4 w-4" />
+              Logout
+            </button>
           </div>
-          <div>
-            <h1 className="text-xl font-bold leading-tight">FloatChat</h1>
-            <p className="text-xs text-blue-200">ARGO Ocean Data Discovery</p>
-          </div>
+
+          <button
+            type="button"
+            onClick={() => setMobileOpen((open) => !open)}
+            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white xl:hidden"
+            aria-label="Toggle menu"
+          >
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
         </div>
 
-        <nav className="flex items-center space-x-2">
-          <Link
-            to="/visuals"
-            className="px-3 py-2 rounded-md text-sm hover:bg-white/10"
-          >
-           3D Visuals
-          </Link>
-             <Link
-            to="/predict"
-            className="px-3 py-2 rounded-md text-sm hover:bg-white/10"
-          >
-            Disaster Prediction
-          </Link>
-          <Link
-            to="/dashboard"
-            className="px-3 py-2 rounded-md text-sm hover:bg-white/10"
-          >
-            Dashboard
-          </Link>
+        {mobileOpen ? (
+          <div className="premium-panel premium-panel-strong mt-3 space-y-3 px-4 py-4 xl:hidden">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const active = location.pathname === item.to;
 
-          <Link
-            to="/floatchat"
-            className="px-3 py-2 rounded-md text-sm hover:bg-cyan-800/40 inline-flex items-center space-x-2 transition-colors"
-          >
-            <MessageCircle className="w-4 h-4 text-cyan-300" />
-            <span>FloatChat</span>
-          </Link>
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  onClick={() => setMobileOpen(false)}
+                  className={`flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium ${
+                    active ? "bg-white/10 text-white" : "bg-white/5 text-slate-300"
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  {item.label}
+                </Link>
+              );
+            })}
 
-          <Link
-            to="/profile"
-            className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2"
-          >
-            <User className="w-4 h-4" />
-            <span>Profile</span>
-          </Link>
+            {onOpenChat ? (
+              <button
+                onClick={() => {
+                  setMobileOpen(false);
+                  onOpenChat();
+                }}
+                className="premium-button-secondary w-full"
+              >
+                <MessageCircle className="h-4 w-4" />
+                Open Chat
+              </button>
+            ) : null}
 
-          <Link
-            to="/history"
-            className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2"
-          >
-            <HistoryIcon className="w-4 h-4" />
-            <span>History</span>
-          </Link>
-
-          {/* Keep as button since it's triggering a chat open */}
-          <button
-            onClick={onOpenChat}
-            className="px-3 py-2 rounded-md text-sm hover:bg-white/10 inline-flex items-center space-x-2"
-          >
-            <MessageCircle className="w-4 h-4" />
-            <span>Chat</span>
-          </button>
-
-          {/* Logout button */}
-          <button
-            onClick={handleLogout}
-            className="ml-2 px-3 py-2 rounded-md text-sm bg-white/10 hover:bg-white/20 border border-white/20 inline-flex items-center space-x-2"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Logout</span>
-          </button>
-        </nav>
+            <button onClick={handleLogout} className="premium-button w-full">
+              <LogOut className="h-4 w-4" />
+              Logout
+            </button>
+          </div>
+        ) : null}
       </div>
     </header>
   );
-};
-
-export default Navbar;
+}

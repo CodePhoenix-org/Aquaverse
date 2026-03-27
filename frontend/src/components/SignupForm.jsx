@@ -1,26 +1,31 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Eye, EyeOff, User, Mail, Lock, ArrowRight } from "lucide-react";
 import axios from "axios";
+import {
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Lock,
+  Mail,
+  User,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { toast, ToastContainer } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
-const SignupForm = () => {
+import { toast } from "react-toastify";
+import { useAuth } from "../context/Authcontext";
+
+export default function SignupForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [apiUrl, setApiUrl] = useState("");
   const navigate = useNavigate();
-
-  useEffect(() => {
-    setApiUrl("http://127.0.0.1:8000/auth/signup");
-  }, []);
+  const { login } = useAuth();
 
   const {
     register,
     handleSubmit,
     watch,
-    formState: { errors },
+    formState: { errors, isSubmitting },
   } = useForm();
+
   const password = watch("password");
 
   const onSubmit = async (data) => {
@@ -32,150 +37,152 @@ const SignupForm = () => {
         confirm_password: data.confirmPassword,
       };
 
-      console.log("Payload to send:", payload);
-
-      const res = await axios.post(apiUrl, payload, {
+      const res = await axios.post("http://127.0.0.1:8000/auth/signup", payload, {
         headers: { "Content-Type": "application/json" },
       });
 
-      console.log("Signup success:", res.data);
-      localStorage.setItem("user", JSON.stringify(res.data));
+      const userData = res.data.user || res.data;
+      if (res.data.access_token) {
+        localStorage.setItem("auth_token", res.data.access_token);
+      }
+      localStorage.setItem("user", JSON.stringify(userData));
+      login(userData);
 
-      toast.success("Signed up successfully ✅");
-      navigate("/floatchat");
-    } catch (err) {
-      console.error("Signup Axios error object:", err);
-      toast.error(err.response?.data?.detail || "Signup failed!");
+      toast.success("Account created. Welcome to AquaVerse.");
+      navigate("/dashboard");
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Signup failed. Please try again.");
     }
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="relative group">
-          <User className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
-          <input
-            {...register("firstName", { required: "First Name is required" })}
-            type="text"
-            placeholder="First Name"
-            className="w-full pl-12 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-          />
-          {errors.firstName && (
-            <span className="text-red-500 text-xs">
-              {errors.firstName.message}
-            </span>
-          )}
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-slate-200">First name</label>
+          <div className="relative">
+            <User className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <input
+              {...register("firstName", { required: "First name is required" })}
+              type="text"
+              placeholder="Ariel"
+              className="premium-input pl-12"
+            />
+          </div>
+          {errors.firstName ? (
+            <p className="text-sm text-rose-300">{errors.firstName.message}</p>
+          ) : null}
         </div>
-        <div className="relative group">
-          <User className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
-          <input
-            {...register("lastName", { required: "Last Name is required" })}
-            type="text"
-            placeholder="Last Name"
-            className="w-full pl-12 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-          />
-          {errors.lastName && (
-            <span className="text-red-500 text-xs">
-              {errors.lastName.message}
-            </span>
-          )}
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-slate-200">Last name</label>
+          <div className="relative">
+            <User className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+            <input
+              {...register("lastName", { required: "Last name is required" })}
+              type="text"
+              placeholder="Rivera"
+              className="premium-input pl-12"
+            />
+          </div>
+          {errors.lastName ? (
+            <p className="text-sm text-rose-300">{errors.lastName.message}</p>
+          ) : null}
         </div>
       </div>
 
-      {/* Email */}
-      <div className="relative group">
-        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
-        <input
-          {...register("email", {
-            required: "Email is required",
-            pattern: {
-              value: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
-              message: "Invalid email address",
-            },
-          })}
-          type="email"
-          placeholder="Email Address"
-          className="w-full pl-12 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-        />
-        {errors.email && (
-          <span className="text-red-500 text-xs">{errors.email.message}</span>
-        )}
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-slate-200">Email</label>
+        <div className="relative">
+          <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <input
+            {...register("email", {
+              required: "Email is required",
+              pattern: {
+                value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+                message: "Enter a valid email address",
+              },
+            })}
+            type="email"
+            placeholder="you@aquaverse.ai"
+            className="premium-input pl-12"
+          />
+        </div>
+        {errors.email ? (
+          <p className="text-sm text-rose-300">{errors.email.message}</p>
+        ) : null}
       </div>
 
-      {/* Password */}
-      <div className="relative group">
-        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
-        <input
-          {...register("password", {
-            required: "Password is required",
-            minLength: {
-              value: 6,
-              message: "Password must be at least 6 characters",
-            },
-          })}
-          type={showPassword ? "text" : "password"}
-          placeholder="Password"
-          className="w-full pl-12 pr-12 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-        />
-        <button
-          type="button"
-          onClick={() => setShowPassword(!showPassword)}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-300 hover:text-cyan-400"
-        >
-          {showPassword ? (
-            <EyeOff className="w-5 h-5" />
-          ) : (
-            <Eye className="w-5 h-5" />
-          )}
-        </button>
-        {errors.password && (
-          <span className="text-red-500 text-xs">
-            {errors.password.message}
-          </span>
-        )}
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-slate-200">Password</label>
+        <div className="relative">
+          <Lock className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <input
+            {...register("password", {
+              required: "Password is required",
+              minLength: {
+                value: 6,
+                message: "Password must be at least 6 characters",
+              },
+            })}
+            type={showPassword ? "text" : "password"}
+            placeholder="Create a password"
+            className="premium-input pl-12 pr-12"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((value) => !value)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-white"
+            aria-label={showPassword ? "Hide password" : "Show password"}
+          >
+            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+          </button>
+        </div>
+        {errors.password ? (
+          <p className="text-sm text-rose-300">{errors.password.message}</p>
+        ) : null}
       </div>
 
-      {/* Confirm Password */}
-      <div className="relative group">
-        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 w-5 h-5" />
-        <input
-          {...register("confirmPassword", {
-            required: "Please confirm your password",
-            validate: (value) => value === password || "Passwords do not match",
-          })}
-          type={showConfirmPassword ? "text" : "password"}
-          placeholder="Confirm Password"
-          className="w-full pl-12 pr-12 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-blue-200 focus:ring-2 focus:ring-cyan-400 focus:outline-none"
-        />
-        <button
-          type="button"
-          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-          className="absolute right-4 top-1/2 -translate-y-1/2 text-blue-300 hover:text-cyan-400"
-        >
-          {showConfirmPassword ? (
-            <EyeOff className="w-5 h-5" />
-          ) : (
-            <Eye className="w-5 h-5" />
-          )}
-        </button>
-        {errors.confirmPassword && (
-          <span className="text-red-500 text-xs">
-            {errors.confirmPassword.message}
-          </span>
-        )}
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-slate-200">Confirm password</label>
+        <div className="relative">
+          <Lock className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <input
+            {...register("confirmPassword", {
+              required: "Please confirm your password",
+              validate: (value) => value === password || "Passwords do not match",
+            })}
+            type={showConfirmPassword ? "text" : "password"}
+            placeholder="Confirm your password"
+            className="premium-input pl-12 pr-12"
+          />
+          <button
+            type="button"
+            onClick={() => setShowConfirmPassword((value) => !value)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-white"
+            aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+          >
+            {showConfirmPassword ? (
+              <EyeOff className="h-5 w-5" />
+            ) : (
+              <Eye className="h-5 w-5" />
+            )}
+          </button>
+        </div>
+        {errors.confirmPassword ? (
+          <p className="text-sm text-rose-300">{errors.confirmPassword.message}</p>
+        ) : null}
       </div>
 
-      {/* Submit */}
-      <button
-        type="submit"
-        className="w-full py-3 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold rounded-xl shadow-lg transform hover:scale-105 transition-all flex items-center justify-center group"
-      >
-        Join the Exploration
-        <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+      <div className="rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm text-slate-300">
+        Create your account to unlock the upgraded dashboard, FloatChat history,
+        and premium visualization workflow.
+      </div>
+
+      <button type="submit" disabled={isSubmitting} className="premium-button w-full">
+        {isSubmitting ? "Creating account..." : "Create Account"}
+        <ArrowRight className="h-4 w-4" />
       </button>
     </form>
   );
-};
-
-export default SignupForm;
+}

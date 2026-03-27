@@ -1,472 +1,412 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { motion, useTime, useTransform } from "framer-motion";
+import { useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import {
+  ArrowRight,
+  Bot,
+  Brain,
+  Globe2,
+  LineChart,
+  Menu,
+  Orbit,
+  Radar,
+  ShieldCheck,
+  Sparkles,
+  Waves,
+  X,
+} from "lucide-react";
+import PageShell from "./ui/PageShell";
+import BrandMark from "./ui/BrandMark";
 
-// Inline Waves Icon
-const WavesIcon = () => (
-  <svg
-    className="w-5 h-5 text-primary-foreground"
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth="2"
-      d="M3 12c2.5-2 6.5-2 9 0s6.5 2 9 0"
-    />
-  </svg>
-);
-
-// Generate Wave Path
-const generateWavePath = (width, height, frequency, amplitude, phase, time) => {
-  let path = `M0 ${height}`;
-  const points = 100;
-  for (let i = 0; i <= points; i++) {
-    const x = (width * i) / points;
-    const y =
-      height * 0.8 +
-      amplitude * Math.sin(frequency * x + phase + time) +
-      amplitude * 0.5 * Math.sin(frequency * x * 2 + phase * 2 + time * 1.5);
-    path += ` L${x} ${y}`;
-  }
-  path += ` L${width} ${height} Z`;
-  return path;
+const fadeUp = {
+  hidden: { opacity: 0, y: 26 },
+  show: { opacity: 1, y: 0 },
 };
 
-// Memoized WaveLayer
-const WaveLayer = React.memo(({ wave, windowWidth, windowHeight }) => {
-  const time = useTime();
-  const pathD = useTransform(time, (latestTime) =>
-    generateWavePath(
-      windowWidth,
-      windowHeight,
-      wave.frequency,
-      wave.amplitude,
-      wave.phase,
-      latestTime * 0.001 * wave.speed
-    )
-  );
-
+function SectionHeading({ kicker, title, description }) {
   return (
-    <div
-      className="absolute inset-0"
-      style={{ bottom: `${wave.layer * 20}px`, overflow: "visible" }}
-    >
-      <svg
-        viewBox={`0 0 ${windowWidth} ${windowHeight}`}
-        preserveAspectRatio="none"
-        style={{ width: "100%", height: "100%" }}
-      >
-        <defs>
-          <linearGradient
-            id={`wave-gradient-${wave.layer}`}
-            x1="0%"
-            y1="0%"
-            x2="100%"
-            y2="0%"
-          >
-            <stop
-              offset="0%"
-              stopColor={wave.color}
-              stopOpacity={wave.opacity}
-            />
-            <stop
-              offset="50%"
-              stopColor={wave.color}
-              stopOpacity={wave.opacity * 0.7}
-            />
-            <stop
-              offset="100%"
-              stopColor={wave.color}
-              stopOpacity={wave.opacity * 0.4}
-            />
-          </linearGradient>
-        </defs>
-        <motion.path
-          d={pathD}
-          fill={`url(#wave-gradient-${wave.layer})`}
-          stroke="none"
-          style={{ filter: `blur(${wave.layer * 0.5 + 1}px)` }}
-        />
-      </svg>
+    <div className="max-w-3xl">
+      <p className="premium-kicker">{kicker}</p>
+      <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.04em] text-white sm:text-4xl">
+        {title}
+      </h2>
+      <p className="mt-4 text-base leading-7 text-slate-300 sm:text-lg">
+        {description}
+      </p>
     </div>
   );
-});
+}
 
-// Sinusoidal Wave Background
-function SinusoidalWaveBackground({ opacity = 1, className = "" }) {
-  const [windowSize, setWindowSize] = useState({
-    width: window.innerWidth,
-    height: window.innerHeight,
-  });
+export default function Home() {
+  const navigate = useNavigate();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  const waves = useMemo(
-    () =>
-      Array.from({ length: 6 }, (_, i) => ({
-        id: `wave-${i}`,
-        layer: i,
-        frequency: 0.01 + i * 0.005,
-        amplitude: 40 - i * 6,
-        speed: 0.5 + i * 0.3,
-        phase: i * Math.PI * 0.3,
-        color: [
-          "#38bdf8",
-          "#0ea5e9",
-          "#0284c7",
-          "#0369a1",
-          "#1e40af",
-          "#1e3a8a",
-        ][i],
-        opacity: 0.8 - i * 0.12,
-      })),
+  const stats = useMemo(
+    () => [
+      { value: "3,847", label: "Active floats" },
+      { value: "85+", label: "Countries contributing" },
+      { value: "24/7", label: "Signal refresh cadence" },
+    ],
     []
   );
 
-  useEffect(() => {
-    const handleResize = () =>
-      setWindowSize({ width: window.innerWidth, height: window.innerHeight });
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  return (
-    <div
-      className={`absolute inset-0 overflow-hidden ${className}`}
-      style={{ opacity }}
-    >
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "linear-gradient(180deg, #0f172a 0%, #1e293b 30%, #1e40af 60%, #0f172a 100%)",
-        }}
-      />
-      {waves.map((wave) => (
-        <WaveLayer
-          key={wave.id}
-          wave={wave}
-          windowWidth={windowSize.width}
-          windowHeight={windowSize.height}
-        />
-      ))}
-    </div>
-  );
-}
-
-// Navigation
-const Navigation = React.memo(() => {
-  const navigate = useNavigate();
-  const scrollToSection = (sectionId) =>
-    document
-      .getElementById(sectionId)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  const navigatetologin = useCallback(() => navigate("/auth"), [navigate]);
-
-  return (
-    <motion.nav
-      initial={{ y: -100, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.6 }}
-      className="fixed top-0 w-full z-50 glassmorphic"
-      style={{
-        background: "rgba(20,30,50,0.95)",
-        backdropFilter: "blur(20px)",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
-      }}
-    >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
-        <motion.div
-          className="flex items-center space-x-2"
-          whileHover={{ scale: 1.05 }}
-        >
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center"
-            style={{
-              background: "linear-gradient(135deg,#38bdf8 0%,#06b6d4 100%)",
-              boxShadow: "0 4px 15px rgba(56,189,248,0.4)",
-            }}
-          >
-            <WavesIcon />
-          </div>
-          <span className="font-bold text-xl text-white whitespace-nowrap">
-            Aquaverse
-          </span>{" "}
-        </motion.div>
-        <div className="hidden md:flex items-center space-x-8">
-          {["features", "architecture", "technology"].map((id) => (
-            <motion.button
-              key={id}
-              onClick={() => scrollOrNavigate(id)}
-              className="text-gray-300 hover:text-white transition-colors duration-300"
-            >
-              {id.charAt(0).toUpperCase() + id.slice(1)}
-            </motion.button>
-          ))}
-          <motion.button
-            onClick={navigatetologin}
-            className="font-semibold text-blue-400 hover:text-cyan-400"
-          >
-            Get Started
-          </motion.button>
-        </div>
-      </div>
-    </motion.nav>
-  );
-});
-
-// Hero Section
-function HeroSection() {
-  return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-20">
-        <motion.h1
-          initial={{ y: 50, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8, delay: 0.3 }}
-          className="text-6xl md:text-8xl lg:text-9xl font-black mb-8 leading-none"
-        >
-          <motion.span
-            className="block"
-            style={{ color: "#38bdf8" }}
-            animate={{ y: [0, -3, 0], scale: [1, 1.02, 1] }}
-            transition={{ duration: 3, repeat: Infinity }}
-          >
-            Aqua
-          </motion.span>
-          <motion.span
-            className="block bg-gradient-to-r from-cyan-400 via-blue-500 to-sky-600 bg-clip-text text-transparent"
-            animate={{ y: [0, -3, 0], scale: [1, 1.02, 1] }}
-            transition={{ duration: 3, repeat: Infinity, delay: 0.5 }}
-          >
-            verse
-          </motion.span>
-        </motion.h1>
-        <p className="text-2xl md:text-3xl font-light text-slate-200 mb-4 max-w-4xl mx-auto">
-          Ocean Data Intelligence Platform
-        </p>
-      </div>
-    </section>
-  );
-}
-
-// Features Section
-function FeaturesSection() {
   const features = useMemo(
     () => [
       {
-        title: "Real-time Ocean Data",
-        desc: "Access millions of Argo float profiles and oceanographic datasets in real time.",
-        icon: "🌊",
+        icon: <Radar className="h-6 w-6 text-cyan-100" />,
+        title: "Live ocean telemetry",
+        description:
+          "Track float fleets, profile updates, and regional conditions through a polished real-time command view.",
       },
       {
-        title: "AI-Powered Analytics",
-        desc: "Leverage advanced AI models for data visualization, anomaly detection, and predictions.",
-        icon: "🤖",
+        icon: <Brain className="h-6 w-6 text-cyan-100" />,
+        title: "AI-assisted exploration",
+        description:
+          "Ask natural-language questions and let FloatChat route you to the right visualization, map, or comparison.",
       },
       {
-        title: "Interactive Visualizations",
-        desc: "Explore interactive charts, maps, and 3D plots for deep ocean insights.",
-        icon: "📊",
+        icon: <LineChart className="h-6 w-6 text-cyan-100" />,
+        title: "Research-grade visuals",
+        description:
+          "Move from profiles and tables to spatial plots and anomaly surfaces without leaving the same premium workspace.",
       },
       {
-        title: "Global Coverage",
-        desc: "Data from 150+ research institutions and 85+ countries, updated 24/7.",
-        icon: "🌍",
+        icon: <ShieldCheck className="h-6 w-6 text-cyan-100" />,
+        title: "Decision-ready insights",
+        description:
+          "Support climate monitoring, marine science, and early-warning workflows with cleaner signal and faster context.",
       },
     ],
     []
   );
 
-  return (
-    <section
-      id="features"
-      className="py-32 relative"
-      style={{
-        background:
-          "linear-gradient(135deg, #1e3a8a 0%, #1e40af 30%, #0284c7 60%, #0ea5e9 100%)",
-      }}
-    >
-      <div className="max-w-6xl mx-auto px-4 text-center relative z-10">
-        <motion.h2
-          className="text-5xl font-bold mb-8"
-          initial={{ y: -20, opacity: 0 }}
-          whileInView={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8 }}
-          viewport={{ once: true }}
-          style={{ color: "#38bdf8" }}
-        >
-          Features
-        </motion.h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mt-16">
-          {features.map((f, i) => (
-            <motion.div
-              key={i}
-              className="bg-white/10 p-8 rounded-3xl backdrop-blur-sm shadow-lg"
-              whileHover={{ scale: 1.05 }}
-              initial={{ y: 20, opacity: 0 }}
-              whileInView={{ y: 0, opacity: 1 }}
-              transition={{ duration: 0.6, delay: i * 0.2 }}
-              viewport={{ once: true }}
-            >
-              <div className="text-4xl mb-4">{f.icon}</div>
-              <h3 className="text-2xl font-semibold mb-2">{f.title}</h3>
-              <p className="text-gray-200">{f.desc}</p>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-    </section>
+  const modules = useMemo(
+    () => [
+      {
+        title: "FloatChat",
+        description:
+          "A conversational surface for querying the ocean like a pro, without memorizing APIs or raw schemas.",
+        icon: <Bot className="h-5 w-5 text-cyan-100" />,
+      },
+      {
+        title: "Visual analytics",
+        description:
+          "Dive from surface trends into layered profile plots, comparison panels, and immersive global views.",
+        icon: <Orbit className="h-5 w-5 text-cyan-100" />,
+      },
+      {
+        title: "Prediction suite",
+        description:
+          "Test environmental conditions against anomaly and aquatic-life models with a sharper, more legible workflow.",
+        icon: <Sparkles className="h-5 w-5 text-cyan-100" />,
+      },
+    ],
+    []
   );
-}
 
-// Architecture Section
-function ArchitectureSection() {
-  return (
-    <section
-      id="architecture"
-      className="py-32 relative bg-gradient-to-b from-slate-900 to-slate-800 text-white"
-      style={{
-        background:
-          "linear-gradient(135deg, #1e3a8a 0%, #1e40af 30%, #0284c7 60%, #0ea5e9 100%)",
-      }}
-    >
-      <div className="max-w-6xl mx-auto px-4 text-center">
-        <motion.h2
-          initial={{ y: -20, opacity: 0 }}
-          whileInView={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8 }}
-          className="text-5xl font-bold mb-8"
-        >
-          Architecture
-        </motion.h2>
-        <p className="text-xl md:text-2xl max-w-4xl mx-auto">
-          Our platform integrates real-time Argo float datasets, AI-powered
-          analytics engines, and interactive visualizations for ocean research
-          and climate monitoring.
-        </p>
-      </div>
-    </section>
-  );
-}
-
-// Technology Section
-function TechnologySection() {
-  const tech = [
-    "React.js",
-    "TailwindCSS",
-    "Framer Motion",
-    "FastAPI",
-    "PostgreSQL",
-    "Supabase",
-    "Python AI/ML",
-    "Docker",
+  const navItems = [
+    { id: "features", label: "Features" },
+    { id: "modules", label: "Modules" },
+    { id: "workflow", label: "Workflow" },
   ];
+
+  const scrollToSection = (id) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setMobileOpen(false);
+  };
+
   return (
-    <section
-      id="technology"
-      className="py-32 relative bg-gradient-to-b from-slate-800 to-slate-900 text-white"
-      style={{
-        background:
-          "linear-gradient(135deg, #1e3a8a 0%, #1e40af 30%, #0284c7 60%, #0ea5e9 100%)",
-      }}
-    >
-      <div className="max-w-6xl mx-auto px-4 text-center">
-        <motion.h2
-          initial={{ y: -20, opacity: 0 }}
-          whileInView={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8 }}
-          className="text-5xl font-bold mb-8"
-        >
-          Technology
-        </motion.h2>
-        <div className="flex flex-wrap justify-center gap-6 mt-12">
-          {tech.map((t, i) => (
-            <motion.div
-              key={i}
-              className="bg-white/10 px-6 py-3 rounded-2xl text-lg font-medium"
-              whileHover={{ scale: 1.05 }}
-              initial={{ y: 20, opacity: 0 }}
-              whileInView={{ y: 0, opacity: 1 }}
-              transition={{ duration: 0.5, delay: i * 0.1 }}
-              viewport={{ once: true }}
+    <PageShell>
+      <header className="sticky top-0 z-40 px-4 pt-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl">
+          <div className="premium-panel premium-panel-strong flex items-center justify-between px-4 py-3 sm:px-6">
+            <BrandMark />
+
+            <nav className="hidden items-center gap-8 xl:flex">
+              {navItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => scrollToSection(item.id)}
+                  className="text-sm font-medium text-slate-300 transition-colors hover:text-white"
+                >
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+
+            <div className="hidden items-center gap-3 xl:flex">
+              <button
+                onClick={() => navigate("/visuals")}
+                className="premium-button-secondary"
+              >
+                Explore Globe
+              </button>
+              <button onClick={() => navigate("/auth")} className="premium-button">
+                Enter Platform
+              </button>
+            </div>
+
+            <button
+              onClick={() => setMobileOpen((open) => !open)}
+              className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white xl:hidden"
+              aria-label="Toggle menu"
             >
-              {t}
-            </motion.div>
-          ))}
+              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
+
+          {mobileOpen ? (
+            <div className="premium-panel premium-panel-strong mt-3 space-y-3 px-4 py-4 xl:hidden">
+              {navItems.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => scrollToSection(item.id)}
+                  className="block w-full rounded-2xl border border-white/[0.08] bg-white/5 px-4 py-3 text-left text-sm text-slate-200"
+                >
+                  {item.label}
+                </button>
+              ))}
+              <button
+                onClick={() => navigate("/visuals")}
+                className="premium-button-secondary w-full"
+              >
+                Explore Globe
+              </button>
+              <button onClick={() => navigate("/auth")} className="premium-button w-full">
+                Enter Platform
+              </button>
+            </div>
+          ) : null}
         </div>
-      </div>
-    </section>
-  );
-}
+      </header>
 
-// CTA Section
-function CTASection() {
-  const navigate = useNavigate();
-  const handleGetStarted = useCallback(() => navigate("/auth"), [navigate]);
-  return (
-    <section
-      id="cta"
-      className="py-32 relative text-center"
-      style={{
-        background:
-          "linear-gradient(135deg, #1e3a8a 0%, #1e40af 30%, #0284c7 60%, #0ea5e9 100%)",
-      }}
-    >
-      <div className="max-w-6xl mx-auto px-4">
-        <motion.h2
-          initial={{ y: 50, opacity: 0 }}
-          whileInView={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8 }}
-          className="text-5xl font-bold mb-8 text-white"
-        >
-          Ready to Dive Into Ocean Data?
-        </motion.h2>
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-12 py-6 rounded-3xl font-bold"
-          onClick={handleGetStarted}
-        >
-          Get Started
-        </motion.button>
-      </div>
-    </section>
-  );
-}
+      <main className="mx-auto max-w-7xl px-4 pb-20 pt-10 sm:px-6 lg:px-8">
+        <section className="grid items-center gap-8 py-10 lg:grid-cols-[1.15fr_0.85fr] lg:py-16">
+          <motion.div
+            variants={fadeUp}
+            initial="hidden"
+            animate="show"
+            transition={{ duration: 0.65 }}
+          >
+            <span className="premium-badge">
+              <Waves className="h-3.5 w-3.5" />
+              Premium Ocean Command Center
+            </span>
+            <h1 className="mt-6 font-display text-5xl font-bold tracking-[-0.06em] text-balance text-white sm:text-6xl lg:text-7xl">
+              A calmer, sharper way to work with ocean intelligence.
+            </h1>
+            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
+              AquaVerse turns fragmented marine data into a refined operational
+              experience for researchers, analysts, and ocean-tech teams. Query,
+              visualize, compare, and predict from one unified surface.
+            </p>
 
-// Footer
-function Footer() {
-  return (
-    <footer
-      className="py-12 text-center text-white bg-slate-900"
-      style={{
-        background:
-          "linear-gradient(135deg, #1e3a8a 0%, #1e40af 30%, #0284c7 60%, #0ea5e9 100%)",
-      }}
-    >
-      <p>&copy; 2025 Aquaverse. All Rights Reserved.</p>
-    </footer>
-  );
-}
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <button onClick={() => navigate("/auth")} className="premium-button">
+                Start Exploring
+                <ArrowRight className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => navigate("/dashboard")}
+                className="premium-button-secondary"
+              >
+                View Dashboard
+              </button>
+            </div>
 
-// Main Landing Component
-export default function AquaverseLanding() {
-  return (
-    <div style={{ background: "#0f172a", minHeight: "100vh" }}>
-      <SinusoidalWaveBackground
-        opacity={0.9}
-        className="fixed top-0 left-0 w-full h-full z-0"
-      />
-      <Navigation />
-      <main style={{ position: "relative", zIndex: 10 }}>
-        <HeroSection />
-        <FeaturesSection />
-        <ArchitectureSection />
-        <TechnologySection />
-        <CTASection />
+            <div className="mt-10 grid gap-4 sm:grid-cols-3">
+              {stats.map((stat) => (
+                <div key={stat.label} className="premium-card px-5 py-4">
+                  <p className="font-display text-3xl font-bold text-white">
+                    {stat.value}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-300">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            variants={fadeUp}
+            initial="hidden"
+            animate="show"
+            transition={{ duration: 0.75, delay: 0.1 }}
+            className="premium-panel premium-panel-strong relative overflow-hidden p-6 sm:p-8"
+          >
+            <div className="absolute inset-x-10 top-0 h-40 rounded-full bg-cyan-300/12 blur-3xl" />
+            <div className="relative space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="premium-kicker">Mission Signal</p>
+                  <h2 className="mt-2 font-display text-3xl font-semibold text-white">
+                    Designed like a premium research cockpit.
+                  </h2>
+                </div>
+                <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3 text-cyan-100">
+                  <Globe2 className="h-6 w-6" />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="premium-card p-5">
+                  <p className="text-sm text-slate-300">Signal quality</p>
+                  <p className="mt-3 font-display text-4xl font-bold text-white">
+                    98.4%
+                  </p>
+                  <p className="mt-2 text-sm text-slate-400">
+                    Cleaned pipeline for charts, maps, and profile comparisons.
+                  </p>
+                </div>
+                <div className="premium-card p-5">
+                  <p className="text-sm text-slate-300">AI routing</p>
+                  <p className="mt-3 font-display text-4xl font-bold text-white">
+                    4 views
+                  </p>
+                  <p className="mt-2 text-sm text-slate-400">
+                    FloatChat can pivot results into maps, tables, plots, or comparison views.
+                  </p>
+                </div>
+              </div>
+
+              <div className="premium-card space-y-4 p-5">
+                <div className="flex items-center justify-between">
+                  <span className="premium-chip">Platform stack</span>
+                  <span className="text-sm text-slate-400">React, AI, 3D, Maps</span>
+                </div>
+                <div className="premium-divider" />
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {["FloatChat", "Globe", "Predictions"].map((item) => (
+                    <div
+                      key={item}
+                      className="rounded-2xl border border-white/[0.08] bg-slate-950/40 px-4 py-3 text-sm text-slate-200"
+                    >
+                      {item}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </section>
+
+        <section id="features" className="py-16">
+          <SectionHeading
+            kicker="Core Experience"
+            title="Every major workflow feels elevated, faster, and easier to read."
+            description="The UI system focuses on depth, clarity, and confidence: premium surfaces, better hierarchy, cleaner interactions, and a visual language built for ocean-tech storytelling."
+          />
+          <div className="mt-10 grid gap-5 lg:grid-cols-2">
+            {features.map((feature, index) => (
+              <motion.article
+                key={feature.title}
+                variants={fadeUp}
+                initial="hidden"
+                whileInView="show"
+                viewport={{ once: true, margin: "-80px" }}
+                transition={{ duration: 0.55, delay: index * 0.08 }}
+                className="premium-card p-6"
+              >
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-300/18 bg-cyan-300/10">
+                  {feature.icon}
+                </div>
+                <h3 className="mt-5 font-display text-2xl font-semibold text-white">
+                  {feature.title}
+                </h3>
+                <p className="mt-3 text-base leading-7 text-slate-300">
+                  {feature.description}
+                </p>
+              </motion.article>
+            ))}
+          </div>
+        </section>
+
+        <section id="modules" className="py-16">
+          <div className="grid gap-8 lg:grid-cols-[0.92fr_1.08fr]">
+            <SectionHeading
+              kicker="Product Modules"
+              title="One brand language across chat, dashboards, prediction, and immersive visuals."
+              description="Instead of treating each route like a different app, AquaVerse now behaves like a coherent premium platform from the first click through the deepest view."
+            />
+            <div className="grid gap-5">
+              {modules.map((module, index) => (
+                <motion.div
+                  key={module.title}
+                  variants={fadeUp}
+                  initial="hidden"
+                  whileInView="show"
+                  viewport={{ once: true, margin: "-100px" }}
+                  transition={{ duration: 0.55, delay: index * 0.08 }}
+                  className="premium-panel p-6"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3">
+                      {module.icon}
+                    </div>
+                    <div>
+                      <h3 className="font-display text-2xl font-semibold text-white">
+                        {module.title}
+                      </h3>
+                      <p className="mt-2 text-base leading-7 text-slate-300">
+                        {module.description}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="workflow" className="py-16">
+          <div className="premium-panel premium-panel-strong p-6 sm:p-8">
+            <SectionHeading
+              kicker="Workflow"
+              title="A premium sequence from question to action."
+              description="Start with a conversational prompt, shape the signal in a dashboard, inspect the globe, and validate conditions in the prediction suite without losing context."
+            />
+
+            <div className="mt-10 grid gap-5 lg:grid-cols-3">
+              {[
+                "Ask FloatChat for a map, profile, or anomaly-focused question.",
+                "Validate spatial or temporal patterns inside the dashboard surfaces.",
+                "Open the prediction and 3D visual routes for deeper situational context.",
+              ].map((step, index) => (
+                <div key={step} className="premium-card p-6">
+                  <p className="premium-kicker">Step 0{index + 1}</p>
+                  <p className="mt-4 text-lg leading-8 text-slate-100">{step}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="py-16">
+          <div className="premium-panel premium-panel-strong flex flex-col gap-6 p-6 sm:p-8 lg:flex-row lg:items-center lg:justify-between">
+            <div className="max-w-2xl">
+              <p className="premium-kicker">Launch Ready</p>
+              <h2 className="mt-3 font-display text-3xl font-bold tracking-[-0.04em] text-white sm:text-4xl">
+                Enter AquaVerse with a UI that finally feels worthy of the data.
+              </h2>
+              <p className="mt-4 text-base leading-7 text-slate-300">
+                The refreshed interface is built to feel premium on desktop and mobile,
+                while still staying practical for real analysis work.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button onClick={() => navigate("/auth")} className="premium-button">
+                Open Auth
+                <ArrowRight className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => navigate("/visuals")}
+                className="premium-button-secondary"
+              >
+                Open 3D Globe
+              </button>
+            </div>
+          </div>
+        </section>
       </main>
-      <Footer />
-    </div>
+    </PageShell>
   );
 }
